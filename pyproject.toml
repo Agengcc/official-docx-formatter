@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "official-docx-formatter"
+version = "0.1.0"
+description = "Local-first Chinese official DOCX formatting helper."
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+  "python-docx>=1.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+]
+
+[tool.setuptools]
+package-dir = {"" = "scripts"}
+packages = ["official_docx_engine"]
+
+[tool.pytest.ini_options]
+pythonpath = [".", "scripts"]
+testpaths = ["tests"]

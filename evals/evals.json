@@ -1,0 +1,114 @@
+{
+  "skill_name": "official-docx-formatter",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "把这个格式很乱的通知 Word 转成标准公文格式。标题是“关于开展安全生产检查的通知”，正文里有“一、总体要求”“（一）检查范围”和“1. 各部门自查：6月25日前完成。”，最后已经有落款“测试单位”和日期“2026年6月19日”。用默认配置，不要额外加占位落款。",
+      "expected_output": "A formatted .docx using the party-government standard profile, preserving title, body order, issuer, and date without adding placeholder issuer/date.",
+      "files": [],
+      "expectations": [
+        "The run uses or references the standard-party-government profile.",
+        "The output is a .docx file that can be opened by python-docx.",
+        "The output preserves the original issuer and date instead of adding placeholder issuer/date.",
+        "Standalone level-1 heading text is formatted separately from mixed inline body text."
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "第一次用这个公文格式化工具。我们单位标题字体指定方正小标宋简体，正文指定仿宋_GB2312，二级标题用楷体_GB2312，其他先按党政机关公文标准配置。帮我建一个叫 my-company 的配置，下次能直接用。",
+      "expected_output": "A reusable my-company profile inheriting from the standard profile, overriding only the specified fonts.",
+      "files": [],
+      "expectations": [
+        "The run creates or proposes a profile named my-company.",
+        "The profile inherits from standard-party-government.",
+        "The profile only overrides the user-specified font fields and leaves unspecified margins/spacing inherited.",
+        "The response explains how to reuse the profile next time."
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "我不确定这个文件要不要按华能那个旧 skill 来弄。它是普通国企对外函，想要通用正式公文格式，别动华能专用 skill。你看看应该用哪个配置，并输出格式化后的 Word。",
+      "expected_output": "The official-docx-formatter skill is used with the general standard profile; the legacy hn-docx-formatter skill is not modified.",
+      "files": [],
+      "expectations": [
+        "The run chooses the general party-government standard profile unless the user provides organization-specific requirements.",
+        "The run explicitly avoids modifying the legacy hn-docx-formatter skill.",
+        "The output is a formatted .docx file or a clear request for the missing input file.",
+        "The response keeps enterprise-specific differences as profile overrides rather than code changes."
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "帮我先生成一份公函骨架，标题是“关于商请协助提供有关资料的函”，主送单位写“某某公司”，落款写“测试单位”，日期 2026年6月19日。格式用党政机关公文标准配置，正文先用占位内容就行。",
+      "expected_output": "A formatted .docx skeleton for 函 using the standard profile, with title, recipient, skeleton body sections, issuer, and date.",
+      "files": [],
+      "expectations": [
+        "The run selects document type 函 separately from the formatting profile.",
+        "The output uses the standard-party-government profile.",
+        "The output includes a函-appropriate skeleton and ending such as 请函复。",
+        "The output is a .docx file that can be opened by python-docx."
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "这个 Word 标题是“关于推进平台数据治理工作的材料”，正文里既写了“现将有关情况说明如下”，又有“请予支持”。先帮我判断它到底更适合按报告、函还是请示来排；如果不确定，先问我，不要直接改格式。",
+      "expected_output": "The skill reads the document, reports likely document-type candidates, and asks the user to choose before formatting because signals are mixed.",
+      "files": [],
+      "expectations": [
+        "The run classifies the document before formatting.",
+        "The run identifies ambiguity between at least two document types.",
+        "The run asks the user to choose before editing styles.",
+        "The run does not produce a formatted output before the user confirms the document type."
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "这个报告里面有公司名和金额，但我只是要把 Word 样式改成标准公文格式，不要改正文。请用默认方式处理。",
+      "expected_output": "The skill classifies and formats locally, preserving the original text and avoiding any rewrite or redaction workflow.",
+      "files": [],
+      "expectations": [
+        "The run treats the skill as format-only.",
+        "The run may normalize punctuation and spacing, but does not rewrite, polish, summarize, redact, or refill sensitive content.",
+        "The output Word preserves original sensitive values in place because only styles are changed.",
+        "The run does not create a manual refill task."
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "把这个 Word 排成标准公文格式，同时把中文段落里的英文标点和多余空格顺手规范一下，但不要润色正文，不要改金额、合同号、邮箱、时间。",
+      "expected_output": "The skill formats the document and applies conservative punctuation/spacing normalization while protecting code-like identifiers and not rewriting substantive content.",
+      "files": [],
+      "expectations": [
+        "The run uses local deterministic normalization, not model rewriting.",
+        "Chinese punctuation and spacing are normalized conservatively.",
+        "URLs, emails, times, standards, and identifiers such as contract numbers are preserved.",
+        "The output does not change facts, wording intent, amounts, company names, project names, or paragraph order."
+      ]
+    },
+    {
+      "id": 8,
+      "prompt": "这个 Word 标题是“关于数据治理有关事项的材料”，正文同时出现“现将有关情况报告如下”和“请贵单位协助支持”。先帮我排成公文格式。",
+      "expected_output": "The skill classifies the document locally, detects ambiguous document type signals, and asks the user to choose before formatting.",
+      "files": [],
+      "expectations": [
+        "The run inspects or classifies the document before applying formatting.",
+        "The run identifies ambiguity between likely document types such as 报告 and 函/请示.",
+        "The run asks the user to confirm the document type before changing styles.",
+        "The run does not generate a formatted .docx or report until the document type is confirmed."
+      ]
+    },
+    {
+      "id": 9,
+      "prompt": "把这个标题为“关于年度重点工作推进情况的报告”的 Word 按默认配置格式化。完成后只告诉我输出文件、report、配置、文种、规范化状态和警告，不要贴全文。",
+      "expected_output": "The skill formats the document locally and returns a concise status including the formatted .docx path, report JSON path, profile, document type, normalization status, and warnings.",
+      "files": [],
+      "expectations": [
+        "The ordinary formatting workflow runs locally through classification, structure recognition, diagnostics, formatting plan, formatting, and report output.",
+        "The run produces a formatted .docx path and a corresponding .report.json path.",
+        "The response includes profile, document type, text-normalization status, and warnings.",
+        "The response does not paste the full document text or full report JSON.",
+        "The run does not rewrite, polish, desensitize, or auto-fill missing body, issuer, signature, or date content."
+      ]
+    }
+  ]
+}
