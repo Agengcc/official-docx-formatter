@@ -16,6 +16,7 @@ except ImportError:  # pragma: no cover - text mode still works
 
 SKILL_DIR = Path(__file__).resolve().parents[1]
 DOCUMENT_TYPES_FILE = SKILL_DIR / "references" / "document_types.json"
+GENERIC_FORMAL_TEXT = "通用正式文本"
 
 
 def load_document_types() -> Dict[str, Any]:
@@ -161,10 +162,16 @@ def classify_lines(lines: List[str]) -> Dict[str, Any]:
 def build_question(candidates: List[Dict[str, Any]]) -> str:
     positive = [item["doc_type"] for item in candidates if item["score"] > 0][:3]
     if len(positive) >= 2:
-        return f"我看这篇更像是【{positive[0]}】或【{positive[1]}】。你希望按哪一种文种来排：{positive[0]} / {positive[1]} / 其他？"
+        return (
+            f"我看这篇更像是【{positive[0]}】或【{positive[1]}】。你希望怎么处理："
+            f"{positive[0]} / {positive[1]} / {GENERIC_FORMAL_TEXT} / 其他？"
+        )
     if len(positive) == 1:
-        return f"我初步判断像【{positive[0]}】，但证据不够强。你确认按{positive[0]}来排吗？"
-    return "我还不能可靠判断文种。你希望按哪一种来排：请示 / 报告 / 通知 / 函 / 纪要 / 其他？"
+        return (
+            f"我初步判断像【{positive[0]}】，但证据不够强。你希望怎么处理："
+            f"{positive[0]} / {GENERIC_FORMAL_TEXT} / 其他？"
+        )
+    return f"我还不能可靠判断文种。你希望怎么处理：{GENERIC_FORMAL_TEXT} / 请示 / 报告 / 通知 / 函 / 纪要 / 其他？"
 
 
 def main() -> int:

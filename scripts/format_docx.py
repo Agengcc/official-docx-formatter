@@ -8,6 +8,8 @@ import copy
 import json
 import re
 from pathlib import Path
+from xml.etree import ElementTree as ET
+from zipfile import ZipFile
 from typing import Any, Dict, Iterable, Optional, Tuple
 
 try:
@@ -15,15 +17,34 @@ try:
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.oxml.ns import qn
     from docx.shared import Cm, Pt, RGBColor
+    from docx.text.paragraph import Paragraph
 except ImportError as exc:  # pragma: no cover - environment message
     raise SystemExit("python-docx is required. Install with: pip install python-docx") from exc
+
+from official_docx_engine.models import FormatOperation
+from official_docx_engine.imprint import format_existing_imprint
+from official_docx_engine.page_numbers import apply_page_numbers, inspect_footers
+from official_docx_engine.standard_text import build_standard_text_document, looks_like_standard_text
+from official_docx_engine.tables import append_and_format_source_tables, copy_and_format_table
+from official_docx_engine.toc import generate_toc_if_clear
 
 SKILL_DIR = Path(__file__).resolve().parents[1]
 PROFILES_DIR = SKILL_DIR / "profiles"
 DOCUMENT_TYPES_FILE = SKILL_DIR / "references" / "document_types.json"
 BASE_PROFILE = "standard-party-government"
+GENERIC_FORMAL_TEXT = "通用正式文本"
+STANDARD_SPEC_TEXT = "标准规范文本"
+W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+W_VAL = f"{{{W_NS}}}val"
+W_ABSTRACT_NUM_ID = f"{{{W_NS}}}abstractNumId"
+W_ILVL = f"{{{W_NS}}}ilvl"
+W_NUM_ID = f"{{{W_NS}}}numId"
 
 CN_DATE_RE = re.compile(r"^\d{4}年\d{1,2}月\d{1,2}日$")
+SENTENCE_PUNCT_RE = re.compile(r"[。；;！？!?]")
+NUMBERED_ITEM_RE = re.compile(
+    r"^([一二三四五六七八九十]+[、，,]|\d+[.．、]|\d+\s|（[一二三四五六七八九十\d]+）|\([一二三四五六七八九十\d]+\)|[a-z]）)"
+)
 
 
 def _engine_imports():
@@ -107,6 +128,104 @@ def _cn_number(value: int) -> str:
     numbers = ["零", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十"]
     if 0 <= value <= 10:
         return numbers[value]
+    return str(value)
+
+
+def _cn_counting_number(value: int) -> str:
+    digits = "零一二三四五六七八九"
+    if value <= 0:
+        return str(value)
+    if value <= 10:
+        return "十" if value == 10 else digits[value]
+    if value < 20:
+        return "十" + digits[value % 10]
+    if value < 100:
+        tens, ones = divmod(value, 10)
+        return digits[tens] + "十" + (digits[ones] if ones else "")
+    return str(value)
+
+
+def load_numbering_formats(input_path: Path) -> dict[tuple[str, str], dict[str, str]]:
+    """Read Word numbering definitions needed to materialize visible list prefixes."""
+
+    try:
+        with ZipFile(input_path) as archive:
+            if "word/numbering.xml" not in archive.namelist():
+                return {}
+            root = ET.fromstring(archive.read("word/numbering.xml"))
+    except Exception:
+        return {}
+
+    ns = {"w": W_NS}
+    abstract_levels: dict[tuple[str, str], dict[str, str]] = {}
+    for abstract_num in root.findall("w:abstractNum", ns):
+        abstract_id = abstract_num.get(W_ABSTRACT_NUM_ID)
+        if abstract_id is None:
+            continue
+        for level in abstract_num.findall("w:lvl", ns):
+            ilvl = level.get(W_ILVL, "0")
+            num_fmt = level.find("w:numFmt", ns)
+            lvl_text = level.find("w:lvlText", ns)
+            start = level.find("w:start", ns)
+            abstract_levels[(abstract_id, ilvl)] = {
+                "num_fmt": num_fmt.get(W_VAL, "decimal") if num_fmt is not None else "decimal",
+                "lvl_text": lvl_text.get(W_VAL, "%1") if lvl_text is not None else "%1",
+                "start": start.get(W_VAL, "1") if start is not None else "1",
+            }
+
+    formats: dict[tuple[str, str], dict[str, str]] = {}
+    for num in root.findall("w:num", ns):
+        num_id = num.get(W_NUM_ID)
+        abstract_num_id = num.find("w:abstractNumId", ns)
+        if num_id is None or abstract_num_id is None:
+            continue
+        abstract_id = abstract_num_id.get(W_VAL)
+        for (candidate_abstract_id, ilvl), info in abstract_levels.items():
+            if candidate_abstract_id == abstract_id:
+                formats[(num_id, ilvl)] = info
+    return formats
+
+
+def visible_paragraph_text(paragraph: Paragraph, numbering_formats: dict[tuple[str, str], dict[str, str]], counters: dict[tuple[str, str], int]) -> str:
+    text = paragraph.text.strip()
+    if not text:
+        return ""
+    numbering_prefix = _paragraph_numbering_prefix(paragraph, numbering_formats, counters)
+    if numbering_prefix and not text.startswith(numbering_prefix):
+        return numbering_prefix + text
+    return text
+
+
+def _paragraph_numbering_prefix(paragraph: Paragraph, numbering_formats: dict[tuple[str, str], dict[str, str]], counters: dict[tuple[str, str], int]) -> str:
+    paragraph_properties = paragraph._p.pPr
+    if paragraph_properties is None:
+        return ""
+    numbering = paragraph_properties.find(qn("w:numPr"))
+    if numbering is None:
+        return ""
+    num_id_el = numbering.find(qn("w:numId"))
+    if num_id_el is None:
+        return ""
+    ilvl_el = numbering.find(qn("w:ilvl"))
+    num_id = num_id_el.get(qn("w:val"))
+    ilvl = ilvl_el.get(qn("w:val")) if ilvl_el is not None else "0"
+    if num_id is None:
+        return ""
+    info = numbering_formats.get((num_id, ilvl))
+    if info is None:
+        return ""
+
+    key = (num_id, ilvl)
+    start = int(info.get("start", "1"))
+    current = counters.get(key, start - 1) + 1
+    counters[key] = current
+    number_text = _format_number(current, info.get("num_fmt", "decimal"))
+    return info.get("lvl_text", "%1").replace("%1", number_text)
+
+
+def _format_number(value: int, num_fmt: str) -> str:
+    if num_fmt in {"chineseCounting", "chineseCountingThousand"}:
+        return _cn_counting_number(value)
     return str(value)
 
 
@@ -202,11 +321,67 @@ def split_source_document(input_path: Path, normalize: bool = True, space_mode: 
     return title, recipient, body, issuer, date_text
 
 
-def add_title(doc: Document, title: str, profile: Dict[str, Any]) -> None:
+def recipient_candidate(text: str) -> bool:
+    stripped = text.strip()
+    compact = re.sub(r"\s+", "", stripped)
+    return (
+        stripped.endswith(("：", ":"))
+        and len(compact) <= 50
+        and not SENTENCE_PUNCT_RE.search(stripped)
+        and not NUMBERED_ITEM_RE.match(stripped)
+    )
+
+
+TITLE_CONTINUATION_RE = re.compile(r"(通知|通报|报告|请示|批复|函|纪要|意见|决定|决议|公告|通告|方案|总结|汇报|说明|手册|标准|规范|办法|指引|流程|审批单|规格说明书)")
+PARENTHETICAL_TITLE_RE = re.compile(r"^（[^）]{1,20}）$")
+
+
+def title_continuation_candidate(text: str, title_lines: list[str]) -> bool:
+    stripped = text.strip()
+    compact = re.sub(r"\s+", "", stripped)
+    if (
+        not compact
+        or len(compact) > 40
+        or recipient_candidate(stripped)
+        or SENTENCE_PUNCT_RE.search(stripped)
+        or NUMBERED_ITEM_RE.match(stripped)
+    ):
+        return False
+    return bool(TITLE_CONTINUATION_RE.search(compact) or (title_lines and PARENTHETICAL_TITLE_RE.match(compact)))
+
+
+def split_source_paragraphs(paragraphs: list[str]) -> Tuple[list[str], str, int, Optional[str], Optional[str]]:
+    title_lines = paragraphs[:1]
+    search_end = min(len(paragraphs), 5)
+
+    for index in range(1, search_end):
+        if title_continuation_candidate(paragraphs[index], title_lines):
+            title_lines.append(paragraphs[index])
+            continue
+        break
+
+    recipient = ""
+    body_start = len(title_lines)
+    for index in range(body_start, search_end):
+        text = paragraphs[index]
+        if recipient_candidate(text):
+            recipient = text.rstrip("：:").strip()
+            body_start = index + 1
+            break
+
+    issuer = None
+    date_text = None
+    if len(paragraphs) - body_start >= 2 and CN_DATE_RE.match(paragraphs[-1]):
+        issuer = paragraphs[-2]
+        date_text = paragraphs[-1]
+    return title_lines, recipient, body_start, issuer, date_text
+
+
+def add_title(doc: Document, title: str, profile: Dict[str, Any], space_after_pt: float = 12) -> None:
     paragraph = doc.add_paragraph()
     paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
     paragraph.paragraph_format.space_before = Pt(0)
-    paragraph.paragraph_format.space_after = Pt(12)
+    paragraph.paragraph_format.space_after = Pt(space_after_pt)
     add_run(paragraph, title, preferred_font(profile, "title"), font_size(profile, "title", 22), font_bold(profile, "title"))
 
 
@@ -266,6 +441,82 @@ def build_document(title: str, recipient: str, body: Iterable[str], issuer: Opti
     return doc
 
 
+def build_document_from_source(
+    input_path: Path,
+    title_override: Optional[str],
+    recipient_override: str,
+    issuer_override: Optional[str],
+    date_override: Optional[str],
+    profile: Dict[str, Any],
+    normalize: bool,
+    space_mode: str,
+    generic_formal_text: bool = False,
+) -> tuple[Document, int]:
+    source = Document(str(input_path))
+    numbering_formats = load_numbering_formats(input_path)
+    paragraph_text_counters: dict[tuple[str, str], int] = {}
+    paragraph_texts = [
+        normalize_line(visible_paragraph_text(paragraph, numbering_formats, paragraph_text_counters), normalize, space_mode)
+        for paragraph in source.paragraphs
+        if paragraph.text.strip()
+    ]
+    title_lines, detected_recipient, body_start, detected_issuer, detected_date = split_source_paragraphs(paragraph_texts)
+    if generic_formal_text:
+        body_start = len(title_lines)
+        recipient = recipient_override
+        issuer = issuer_override
+        date_text = date_override
+        detected_issuer = None
+        detected_date = None
+    else:
+        recipient = recipient_override or detected_recipient
+        issuer = issuer_override or detected_issuer
+        date_text = date_override or detected_date
+
+    doc = Document()
+    setup_page(doc, profile)
+    if title_override:
+        add_title(doc, normalize_line(title_override, normalize, space_mode), profile)
+    else:
+        for index, title in enumerate(title_lines):
+            add_title(
+                doc,
+                normalize_line(title, normalize, space_mode),
+                profile,
+                space_after_pt=12 if index == len(title_lines) - 1 else 0,
+            )
+    add_recipient(doc, normalize_line(recipient, normalize, space_mode), profile)
+
+    paragraph_ordinal = -1
+    copied_tables = 0
+    source_table_index = 0
+    body_text_counters: dict[tuple[str, str], int] = {}
+    for child in source.element.body.iterchildren():
+        if child.tag == qn("w:p"):
+            source_paragraph = Paragraph(child, source)
+            text = visible_paragraph_text(source_paragraph, numbering_formats, body_text_counters)
+            if not text:
+                continue
+            paragraph_ordinal += 1
+            if paragraph_ordinal < body_start:
+                continue
+            if paragraph_ordinal >= len(paragraph_texts) - 2 and detected_issuer and detected_date and text in {detected_issuer, detected_date}:
+                continue
+            normalized = normalize_line(text, normalize, space_mode)
+            if normalized:
+                add_body_paragraph(doc, normalized, profile)
+        elif child.tag == qn("w:tbl") and paragraph_ordinal >= body_start - 1:
+            if source_table_index < len(source.tables):
+                copy_and_format_table(doc, source.tables[source_table_index], profile)
+                copied_tables += 1
+            source_table_index += 1
+        elif child.tag == qn("w:tbl"):
+            source_table_index += 1
+
+    add_footer(doc, issuer, date_text, profile)
+    return doc, copied_tables
+
+
 def smoke_check(path: Path) -> str:
     doc = Document(str(path))
     paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
@@ -282,13 +533,13 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Format Chinese official DOCX documents")
     parser.add_argument("input", nargs="?", help="Input .docx path. Omit when using --text-file.")
     parser.add_argument("-o", "--output", required=True, help="Output .docx path")
-    parser.add_argument("--profile", default=BASE_PROFILE, help="Profile id from profiles/*.json")
+    parser.add_argument("--profile", default=BASE_PROFILE, help=argparse.SUPPRESS)
     parser.add_argument("--title", help="Title when creating from text")
     parser.add_argument("--recipient", default="", help="Recipient when creating from text")
     parser.add_argument("--issuer", help="Issuer override")
     parser.add_argument("--date", dest="date_text", help="Date override, e.g. 2026年6月19日")
     parser.add_argument("--text-file", help="Create a formatted .docx from a plain text file")
-    parser.add_argument("--doc-type", help="Document type, e.g. 请示, 报告, 通知, 函, 纪要")
+    parser.add_argument("--doc-type", help="Document type, e.g. 请示, 报告, 通知, 函, 纪要, 通用正式文本")
     parser.add_argument("--create-skeleton", action="store_true", help="Create a document skeleton from --doc-type")
     parser.add_argument("--assume-detected-type", action="store_true", help="Continue when classifier is confident; otherwise stop and ask user")
     parser.add_argument(
@@ -299,6 +550,13 @@ def main() -> int:
         help="Write a JSON formatting report for DOCX input. Defaults to output_path.with_suffix('.report.json').",
     )
     parser.add_argument("--no-normalize-text", action="store_true", help="Do not normalize punctuation or spacing")
+    parser.add_argument("--page-numbers", action="store_true", help="Insert conservative Word PAGE field page numbers when safe")
+    parser.add_argument("--format-tables", action="store_true", help="Preserve source tables and conservatively format cell internals")
+    parser.add_argument("--generate-toc", action="store_true", help="Generate a Word TOC field when heading hierarchy is clear")
+    parser.add_argument("--format-imprint", action="store_true", help="Detect and format existing imprint lines without creating new ones")
+    parser.add_argument("--generic-formal-text", action="store_true", help="Format as 通用正式文本: preserve order and apply generic formal typography without official-document structure")
+    parser.add_argument("--standard-text", action="store_true", help="Format 标准规范文本 documents with cover, toc, chapter, clause, and table rules")
+    parser.add_argument("--standard-spec-text", action="store_true", help="Alias for --standard-text")
     parser.add_argument(
         "--space-mode",
         choices=("keep_en_boundary", "remove_all", "keep_all"),
@@ -306,12 +564,19 @@ def main() -> int:
         help="How to handle spaces when normalizing text.",
     )
     args = parser.parse_args()
+    if args.generic_formal_text:
+        args.doc_type = GENERIC_FORMAL_TEXT
+    if args.standard_spec_text:
+        args.standard_text = True
 
     profile = load_profile(args.profile)
     output_path = Path(args.output)
     report_path = _report_path(output_path, args.report)
     normalize = not args.no_normalize_text
     report_data = None
+    footer_inspection = None
+    input_path = None
+    inline_table_count = 0
 
     if args.create_skeleton:
         if not args.doc_type:
@@ -329,48 +594,163 @@ def main() -> int:
         if not args.input:
             raise SystemExit("input .docx path is required unless --text-file is used")
         input_path = Path(args.input)
-        read_docx_snapshot, analyze_structure, diagnose_snapshot, build_format_plan, write_report_json = _engine_imports()
-        snapshot = read_docx_snapshot(input_path)
-        source_lines = [paragraph.text.strip() for paragraph in snapshot.non_empty_paragraphs]
-        if not args.doc_type:
-            classification = classify_lines_for_type(source_lines)
-            top = classification["top"]
-            print(f"detected_doc_type={top.get('doc_type', '未知')} confidence={top.get('confidence', 0)}")
-            if classification["ask_user"] and not args.assume_detected_type:
-                print(classification["question"])
-                return 2
-            args.doc_type = top.get("doc_type")
+        if args.standard_text or (not args.generic_formal_text and looks_like_standard_text(input_path)):
+            doc, standard_result = build_standard_text_document(input_path, profile)
+            if report_path is not None:
+                read_docx_snapshot, analyze_structure, diagnose_snapshot, build_format_plan, write_report_json = _engine_imports()
+                snapshot = read_docx_snapshot(input_path)
+                structure = analyze_structure(snapshot)
+                report_data = {
+                    "write_report_json": write_report_json,
+                    "input_path": input_path,
+                    "profile_id": profile.get("profile_id", args.profile),
+                    "doc_type": STANDARD_SPEC_TEXT,
+                    "structure": structure,
+                    "issues": diagnose_snapshot(snapshot, structure),
+                    "operations": [
+                        FormatOperation(
+                            kind="standard_text_format",
+                            target="document",
+                            params={
+                                "action": standard_result.action,
+                                "toc_count": standard_result.toc_count,
+                                "table_count": standard_result.table_count,
+                                "merged_cover_label": standard_result.merged_cover_label,
+                            },
+                            reason="apply standard-specification cover, toc hierarchy, body heading, and serial-number table rules",
+                        )
+                    ],
+                    "FormatOperation": FormatOperation,
+                }
+            args.page_numbers = False
+            args.format_tables = False
+            args.generate_toc = False
+            args.format_imprint = False
+        else:
+            read_docx_snapshot, analyze_structure, diagnose_snapshot, build_format_plan, write_report_json = _engine_imports()
+            snapshot = read_docx_snapshot(input_path)
+            if args.page_numbers:
+                footer_inspection = inspect_footers(input_path)
+            source_lines = [paragraph.text.strip() for paragraph in snapshot.non_empty_paragraphs]
+            if not args.doc_type:
+                classification = classify_lines_for_type(source_lines)
+                top = classification["top"]
+                print(f"detected_doc_type={top.get('doc_type', '未知')} confidence={top.get('confidence', 0)}")
+                if classification["ask_user"] and not args.assume_detected_type:
+                    print(classification["question"])
+                    return 2
+                args.doc_type = top.get("doc_type")
 
-        structure = analyze_structure(snapshot)
-        issues = diagnose_snapshot(snapshot, structure)
-        plan = build_format_plan(
-            snapshot,
-            structure,
-            profile_id=profile.get("profile_id", args.profile),
-            doc_type=args.doc_type or "未知",
-            normalize_text=normalize,
-        )
-        title, recipient, body, detected_issuer, detected_date = split_source_document(input_path, normalize=normalize, space_mode=args.space_mode)
-        doc = build_document(
-            args.title or title,
-            args.recipient or recipient,
-            body,
-            args.issuer or detected_issuer,
-            args.date_text or detected_date,
-            profile,
-            normalize=False,
-            space_mode=args.space_mode,
-        )
-        if report_path is not None:
-            report_data = {
-                "write_report_json": write_report_json,
-                "input_path": input_path,
-                "profile_id": profile.get("profile_id", args.profile),
-                "doc_type": args.doc_type or "未知",
-                "structure": structure,
-                "issues": issues,
-                "operations": plan.operations,
-            }
+            structure = analyze_structure(snapshot)
+            issues = diagnose_snapshot(snapshot, structure)
+            plan = build_format_plan(
+                snapshot,
+                structure,
+                profile_id=profile.get("profile_id", args.profile),
+                doc_type=args.doc_type or "未知",
+                normalize_text=normalize,
+            )
+            doc, inline_table_count = build_document_from_source(
+                input_path,
+                args.title,
+                args.recipient,
+                args.issuer,
+                args.date_text,
+                profile,
+                normalize=normalize,
+                space_mode=args.space_mode,
+                generic_formal_text=args.doc_type == GENERIC_FORMAL_TEXT,
+            )
+            if report_path is not None:
+                report_data = {
+                    "write_report_json": write_report_json,
+                    "input_path": input_path,
+                    "profile_id": profile.get("profile_id", args.profile),
+                    "doc_type": args.doc_type or "未知",
+                    "structure": structure,
+                    "issues": issues,
+                    "operations": list(plan.operations),
+                    "FormatOperation": FormatOperation,
+                }
+
+    if args.format_tables and input_path is not None and inline_table_count == 0:
+        table_result = append_and_format_source_tables(doc, input_path, profile)
+        if report_data is not None:
+            report_data["operations"].append(
+                report_data["FormatOperation"](
+                    kind="table_format",
+                    target="tables",
+                    params={
+                        "table_count": table_result.table_count,
+                        "skipped_count": table_result.skipped_count,
+                        "action": table_result.action,
+                    },
+                    reason="preserve source tables and format cell internals conservatively",
+                )
+            )
+    elif args.format_tables and input_path is not None and inline_table_count:
+        if report_data is not None:
+            report_data["operations"].append(
+                report_data["FormatOperation"](
+                    kind="table_format",
+                    target="tables",
+                    params={
+                        "table_count": inline_table_count,
+                        "skipped_count": 0,
+                        "action": "formatted_inline",
+                    },
+                    reason="preserve source tables in original document order and format cell internals conservatively",
+                )
+            )
+
+    if args.generate_toc:
+        toc_result = generate_toc_if_clear(doc)
+        if report_data is not None:
+            report_data["operations"].append(
+                report_data["FormatOperation"](
+                    kind="toc_generation",
+                    target="document",
+                    params={
+                        "heading_count": toc_result.heading_count,
+                        "max_level": toc_result.max_level,
+                        "action": toc_result.action,
+                    },
+                    reason="generate Word TOC field only when heading hierarchy is clear",
+                )
+            )
+
+    if args.format_imprint:
+        imprint_result = format_existing_imprint(doc, profile)
+        if report_data is not None:
+            report_data["operations"].append(
+                report_data["FormatOperation"](
+                    kind="imprint_format",
+                    target="imprint",
+                    params={
+                        "imprint_count": imprint_result.imprint_count,
+                        "paragraph_indices": list(imprint_result.paragraph_indices),
+                        "action": imprint_result.action,
+                    },
+                    reason="format existing imprint lines without creating new imprint text",
+                )
+            )
+
+    if args.page_numbers:
+        page_number_result = apply_page_numbers(doc, footer_inspection)
+        if report_data is not None:
+            report_data["operations"].append(
+                report_data["FormatOperation"](
+                    kind="page_number",
+                    target="footer",
+                    params={
+                        "existing_page_number": page_number_result.existing_page_number,
+                        "existing_non_page_footer": page_number_result.existing_non_page_footer,
+                        "action": page_number_result.action,
+                        "preserved_footer_texts": list(page_number_result.preserved_footer_texts),
+                    },
+                    reason="insert PAGE field unless footer contains non-page content",
+                )
+            )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     doc.save(str(output_path))

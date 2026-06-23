@@ -12,13 +12,13 @@ Use the default profile as a practical Word/WPS implementation of these sources:
 - `《党政机关公文处理工作条例》` defines the 15 official document types and says official-document layout follows the national standard.
 - The legacy HN formatter covers the high-frequency enterprise subset: 请示、报告、决定、通知、批复、通报、函、纪要.
 
-Use these sources in that order: national rule first, then enterprise/high-frequency practice, then user-provided organization profile.
+Use these sources in that order: national rule first, then enterprise/high-frequency practice. This formatter no longer offers custom organization profiles.
 
-The formatter is an implementation aid, not an authoritative source. If a unit template or profile conflicts with the default formatter behavior, the unit template/profile takes priority.
+The formatter is an implementation aid, not an authoritative source. If a unit template conflicts with the default formatter behavior, treat that as outside the current product scope instead of guessing from partial settings.
 
 ## Hard Standards
 
-Treat these as the base rules unless the user names an organization profile:
+Treat these as the base rules:
 
 - A4 paper.
 - Page margins: top 37 mm, bottom 35 mm, left 28 mm, right 26 mm.
@@ -27,11 +27,11 @@ Treat these as the base rules unless the user names an organization profile:
 - Title generally uses 2 hao xiao-biao-song style.
 - Hierarchy order: `一、`, `（一）`, `1.`, `（1）`.
 - The official 15 document types are: 决议、决定、命令、公报、公告、通告、意见、通知、通报、报告、请示、批复、议案、函、纪要.
-- For existing documents, classify the document type before applying formatting. The document type controls structure; the profile controls typography and page style.
+- For existing documents, classify the document type before applying formatting. The document type controls structure; the default configuration controls typography and page style.
 
 ## Signature, Date, and Spacing
 
-This skill treats the common enterprise Word output as a no-seal single-issuer draft unless the user provides a red-head/seal template or an organization profile says otherwise.
+This skill treats the common enterprise Word output as a no-seal single-issuer draft. Red-head/seal template handling is outside the default workflow unless implemented as a dedicated feature.
 
 For a no-seal single-issuer document, use this default:
 
@@ -49,7 +49,7 @@ For a sealed single-issuer document, the national format is more stamp-aware:
 
 For a signed-stamp document, the standard has a separate layout: the signature stamp is generally placed two blank lines below the body or attachment note, and the date is placed one blank line below the signature stamp with four-character right space.
 
-Because this skill does not insert or position real seals by default, the profile implements the no-seal single-issuer rule. If a unit uses sealed templates, represent that as an organization profile or a reusable `.docx` template rather than guessing from plain text.
+Because this skill does not insert or position real seals by default, the default configuration implements the no-seal single-issuer rule. If a unit uses sealed templates, do not guess from plain text.
 
 ## Word/WPS Implementation Choices
 
@@ -61,7 +61,7 @@ These are practical approximations, not separate legal standards:
 - Use two-character first-line indent for body paragraphs.
 - Use font fallback lists because systems may not have the exact same Chinese fonts installed.
 
-## Enterprise Extensions
+## Out of Scope
 
 Large organizations often keep the national standard as the base and add internal habits:
 
@@ -71,4 +71,4 @@ Large organizations often keep the national standard as the base and add interna
 - Internal forms such as 签报、呈批件、工作联系单.
 - Approval, issuing, archive, or OA metadata requirements.
 
-Represent those differences as profiles. Do not bake an enterprise name into the formatter code.
+This formatter currently does not provide a custom organization profile flow for those differences.

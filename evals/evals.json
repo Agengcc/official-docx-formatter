@@ -15,26 +15,14 @@
     },
     {
       "id": 2,
-      "prompt": "第一次用这个公文格式化工具。我们单位标题字体指定方正小标宋简体，正文指定仿宋_GB2312，二级标题用楷体_GB2312，其他先按党政机关公文标准配置。帮我建一个叫 my-company 的配置，下次能直接用。",
-      "expected_output": "A reusable my-company profile inheriting from the standard profile, overriding only the specified fonts.",
+      "prompt": "我不确定这个文件要不要按单位以前的专用模板来弄。它是普通国企对外函，想要通用正式公文格式。你看看应该用哪个配置，并输出格式化后的 Word。",
+      "expected_output": "The official-docx-formatter skill is used with the default party-government standard configuration.",
       "files": [],
       "expectations": [
-        "The run creates or proposes a profile named my-company.",
-        "The profile inherits from standard-party-government.",
-        "The profile only overrides the user-specified font fields and leaves unspecified margins/spacing inherited.",
-        "The response explains how to reuse the profile next time."
-      ]
-    },
-    {
-      "id": 3,
-      "prompt": "我不确定这个文件要不要按华能那个旧 skill 来弄。它是普通国企对外函，想要通用正式公文格式，别动华能专用 skill。你看看应该用哪个配置，并输出格式化后的 Word。",
-      "expected_output": "The official-docx-formatter skill is used with the general standard profile; the legacy hn-docx-formatter skill is not modified.",
-      "files": [],
-      "expectations": [
-        "The run chooses the general party-government standard profile unless the user provides organization-specific requirements.",
-        "The run explicitly avoids modifying the legacy hn-docx-formatter skill.",
+        "The run chooses the default party-government standard configuration.",
+        "The run does not offer a separate organization-specific template flow.",
         "The output is a formatted .docx file or a clear request for the missing input file.",
-        "The response keeps enterprise-specific differences as profile overrides rather than code changes."
+        "The response does not offer to create a custom organization profile."
       ]
     },
     {

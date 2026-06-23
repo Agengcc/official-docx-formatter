@@ -1,15 +1,14 @@
 # Document Types
 
-Keep document type separate from formatting profile:
+Keep document type separate from formatting configuration:
 
-- Profile answers: which fonts, margins, line spacing, and page rules should be used?
+- Formatting configuration answers: which fonts, margins, line spacing, and page rules should be used?
 - Document type answers: what structure, title habit, main constraints, and ending phrase should the document follow?
 
-This lets the skill combine them naturally, for example:
+This lets the skill combine document type with the default standard configuration, for example:
 
 - `报告` + `standard-party-government`
-- `函` + `my-company`
-- `通知` + `example-organization`
+- `通用正式文本` + `standard-party-government` for ambiguous existing materials that only need clean formal typography
 
 ## Common Types
 
@@ -42,13 +41,15 @@ For an existing document, classify before formatting:
 1. Read the title and first meaningful paragraphs.
 2. Check whether the title contains an official document type or alias, for example `报告`, `请示`, `通知`, `函`, `公函`, `纪要`.
 3. Check ending phrases and body signals, for example `特此报告。`, `妥否，请示。`, `请函复。`, `现将有关事项通知如下`.
-4. If the top candidate is weak or close to another candidate, ask the user to choose before editing the Word file.
+4. If the top candidate is weak or close to another candidate, ask the user to choose before editing the Word file. Offer `通用正式文本` when the user only wants generic formal typography and does not want to force an official document type.
 
 The 15 official document types are: 决议、决定、命令、公报、公告、通告、意见、通知、通报、报告、请示、批复、议案、函、纪要. In enterprise use, the high-frequency set is usually 请示、报告、通知、批复、通报、函/公函、纪要、决定, which is also the set emphasized by the legacy HN formatter.
 
+`通用正式文本` is not one of the 15 official document types. Use it only for formatting an existing ambiguous material. It should preserve paragraph order, treat the first non-empty paragraph as the title, format numbered headings when clear, and avoid adding or extracting recipient, issuer, date, red-head, imprint, or seal-related structure.
+
 ## Layout Notes by Type
 
-These notes are defaults for ordinary Word/WPS drafts. A red-head template, seal template, OA export, or organization profile can override them.
+These notes are defaults for ordinary Word/WPS drafts. Red-head templates, seal templates, OA export metadata, and organization-specific templates are outside the current default formatter scope unless implemented as dedicated features.
 
 | Type | Ending / Signature Habit |
 | --- | --- |
@@ -58,4 +59,4 @@ These notes are defaults for ordinary Word/WPS drafts. A red-head template, seal
 | 通知 | Often ends after listed matters or implementation requirements. Issuer/date stay at the end unless the source is an internal notice template with a different fixed layout. |
 | 纪要 | Often uses meeting metadata and agreed items rather than a normal upward/downward ending phrase; signature/date may be absent in some internal meeting-minute templates. Preserve source structure unless the user asks for a formal issued version. |
 
-For signature/date details, read `references/standards.md` before changing code or profiles.
+For signature/date details, read `references/standards.md` before changing code or the default configuration.

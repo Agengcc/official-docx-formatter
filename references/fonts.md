@@ -10,7 +10,7 @@ Reasons:
 
 ## Default Behavior
 
-Use the selected profile's font list. The first font is the preferred official-document font; later fonts are acceptable fallbacks.
+Use the default configuration's font list. The first font is the preferred official-document font; later fonts are acceptable fallbacks.
 
 Default profile intent:
 
@@ -33,6 +33,6 @@ For strict printed or officially submitted documents:
 - Do not install fonts automatically.
 - If the user explicitly provides a font file and asks to install it, confirm licensing/permission first and treat installation as a separate system operation, not part of this formatter.
 
-## Profile Guidance
+## Organization-Specific Fonts
 
-If an organization mandates specific fonts, create a custom profile. Keep the standard profile generic and do not bake an enterprise font package into the formatter.
+If an organization mandates specific fonts, this formatter should not create a custom format profile. Use the default configuration, or treat the unit-specific template as outside the current product scope.
