@@ -100,6 +100,7 @@ Do not ask the user to choose between standard and custom formats. If the user a
    - If the source has collapsed all content into one long paragraph, repair paragraph boundaries only when the title and embedded section-heading signals are clear. Preserve wording and order; do not invent missing headings, issuer, or date.
    - If paragraph hierarchy is implicit, identify only short standalone, punctuation-free structure lines as headings/subtitles. Do not promote sentence-like body text or signature-like organization lines into headings.
    - For space-delimited one-paragraph drafts, split structure blocks before applying text normalization so boundary spaces are not lost. Add visible hierarchy numbering only to recovered heading lines, not to sentence-like body paragraphs.
+   - Treat hierarchy paragraphs such as `一、`、`（一）`、`1.` and `（1）` as正文层级段落: keep their hierarchy fonts, but use the same two-character first-line indent as ordinary body paragraphs.
    - Apply the confirmed document type's structural rules and the default configuration's typography, margins, line spacing, paragraph spacing, and hierarchy rules.
    - Normalize punctuation and spacing unless the user explicitly asks to preserve characters exactly. Use `--no-normalize-text` for exact-character preservation.
    - For issuer/date placement, follow the default configuration. It uses no-seal single-issuer placement: one blank line after the body or attachment note, then issuer/date on the right. Read `references/standards.md` before changing this behavior.
@@ -156,10 +157,10 @@ Default hierarchy:
 | --- | --- | --- | --- |
 | Title | 小标宋体 fallback list | 2 hao / 22 pt | Centered |
 | Body | 仿宋体 fallback list | 3 hao / 16 pt | Two-character first-line indent |
-| Level 1 heading `一、` | 黑体 fallback list | 3 hao / 16 pt | Bold |
-| Level 2 heading `（一）` | 楷体 fallback list | 3 hao / 16 pt | Not bold |
-| Level 3 heading `1.` | Body font | 3 hao / 16 pt | Not bold |
-| Level 4 heading `（1）` | Body font | 3 hao / 16 pt | Not bold |
+| Level 1 heading `一、` | 黑体 fallback list | 3 hao / 16 pt | Bold, two-character first-line indent |
+| Level 2 heading `（一）` | 楷体 fallback list | 3 hao / 16 pt | Not bold, two-character first-line indent |
+| Level 3 heading `1.` | Body font | 3 hao / 16 pt | Not bold, two-character first-line indent |
+| Level 4 heading `（1）` | Body font | 3 hao / 16 pt | Not bold, two-character first-line indent |
 | Word automatic numbering | Materialize visible prefixes such as `一、` before rebuilding |
 
 Standard-specification extras:

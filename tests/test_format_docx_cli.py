@@ -485,7 +485,7 @@ def test_glued_single_paragraph_report_is_split_into_reasonable_blocks(tmp_path:
     assert output.paragraphs[1].alignment != 1
     for heading_text in ["存在的问题", "解决措施", "时间计划"]:
         heading = next(paragraph for paragraph in output.paragraphs if paragraph.text.strip() == heading_text)
-        assert heading.paragraph_format.first_line_indent.pt == 0
+        assert heading.paragraph_format.first_line_indent.pt == 32
         assert heading.runs[0].font.name == "黑体"
         assert heading.runs[0].font.bold is True
 
@@ -524,7 +524,7 @@ def test_unnumbered_headings_and_subtitle_are_structured(tmp_path: Path) -> None
     assert non_empty[1].runs[0].font.name == "方正小标宋简体"
     for heading_text in ["存在的问题", "解决措施", "时间计划"]:
         heading = next(paragraph for paragraph in non_empty if paragraph.text.strip() == heading_text)
-        assert heading.paragraph_format.first_line_indent.pt == 0
+        assert heading.paragraph_format.first_line_indent.pt == 32
         assert heading.runs[0].font.name == "黑体"
         assert heading.runs[0].font.bold is True
     signature = non_empty[-1]
@@ -592,6 +592,7 @@ def test_spaced_single_paragraph_report_recovers_nested_hierarchy(tmp_path: Path
     level1 = [paragraph for paragraph in non_empty if paragraph.text.strip().startswith(("一、", "二、", "三、"))]
     level2 = [paragraph for paragraph in non_empty if paragraph.text.strip().startswith(("（一）", "（二）", "（三）"))]
     assert {paragraph.runs[0].font.name for paragraph in level1} == {"黑体"}
+    assert {paragraph.paragraph_format.first_line_indent.pt for paragraph in level1} == {32}
     assert {paragraph.runs[0].font.name for paragraph in level2} == {"楷体_GB2312"}
     assert non_empty[-1].runs[0].font.name == "仿宋_GB2312"
 

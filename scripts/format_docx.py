@@ -589,8 +589,7 @@ def add_recipient(doc: Document, recipient: str, profile: Dict[str, Any]) -> Non
 def add_body_paragraph(doc: Document, text: str, profile: Dict[str, Any]) -> None:
     paragraph = doc.add_paragraph()
     key = hierarchy_key(text) or "body"
-    first_line = key not in {"level1"}
-    set_common_paragraph_format(paragraph, profile, first_line=first_line)
+    set_common_paragraph_format(paragraph, profile, first_line=True)
     add_run(paragraph, text, preferred_font(profile, key), font_size(profile, key, 16), font_bold(profile, key))
 
 
