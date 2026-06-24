@@ -597,6 +597,63 @@ def test_spaced_single_paragraph_report_recovers_nested_hierarchy(tmp_path: Path
     assert non_empty[-1].runs[0].font.name == "仿宋_GB2312"
 
 
+def test_management_method_single_paragraph_uses_scripted_chapter_recovery(tmp_path: Path) -> None:
+    input_path = tmp_path / "management_method_source.docx"
+    source = Document()
+    source.add_paragraph(
+        "超储物资内部调剂消耗指引"
+        "超储物资是指库龄通常在一年以内，因项目结余、采购计划变更或储备定额调整而形成的，库存数量超出实际需求但物理性能完好、具备完整使用价值的备品配件及材料。"
+        "基层企业应通过 ERP 系统或物资管理模块，定期筛选“无动态、高库存”物资，将其列入超储物资调剂清单进行专项管理。"
+        "集团供应链管理部作为归口管理部门，负责制定管理制度，建立信息平台，并对各单位调剂完成情况进行绩效考核。"
+        "集团物资供应中心（调剂中心）负责跨二级单位调剂的交易撮合、物流协调及华能商城调剂模块的日常运营。"
+        "二级单位（管理中心）负责本单位内部超储物资的认定、价格审批及所属基层企业的利库监督。"
+        "基层企业（执行主体）负责实物信息的实时发布、质量维护、实物交接及账务处理。"
+        "超储物资上架信息须包含物资编码、参数规格、交易价格、实物照片及技术说明书等关键要素。"
+        "需求单位在发起采购申请前，系统将自动匹配集团范围内超储物资库。"
+        "超储物资的调剂价格主要依据交易双方的股权性质及资产账面价值确定。"
+        "资产减值是指资产在调剂时的可收回金额低于其账面余额的差额。"
+        "资产评估是通过专业机构评定确定调剂资产在特定时点的公允价值。"
+        "重置完全价是指在当前市场环境下，重新购置与该物资完全相同的新品所需的全部成本。"
+        "超储物资调剂产生的装卸、运输及保险费用原则上由使用方（需求单位）承担。"
+        "为提高资源流转效率，集团公司授权物资供应中心对账面价值为零但仍有使用价值的超储物资，行使跨二级单位调拨的快速审批权。"
+        "所有调剂业务必须在华能商城“联储联备专区”完成从发布、下单、发货到确认验收的全流程线上闭环操作。"
+        "财务处理与税务合规方面，调出方产生的调剂收入计入“其他业务收入”或“营业外收入”。"
+        "超储物资调剂适用“现状交付、风险自担”原则。"
+        "考核激励层面，若超储物资调剂导致调出方产生资产损失并降低利润，在年度考核计算时，该部分损失不计入当年利润指标考核计算值。"
+    )
+    source.save(str(input_path))
+    output_path = tmp_path / "management_method_formatted.docx"
+
+    result = run_format_cli(str(input_path), "-o", str(output_path), "--report", "--assume-detected-type")
+
+    assert result.returncode == 0, result.stderr
+    output = Document(str(output_path))
+    non_empty = [paragraph for paragraph in output.paragraphs if paragraph.text.strip()]
+    texts = [paragraph.text.strip() for paragraph in non_empty]
+    expected_chapters = [
+        "一、管理职责分工",
+        "二、上架信息发布要求",
+        "三、需求匹配与优先调剂",
+        "四、调剂定价规则",
+        "五、资产减值处理",
+        "六、资产评估机制",
+        "七、重置完全价核定",
+        "八、费用承担",
+        "九、零值物资快速调拨",
+        "十、线上操作流程",
+        "十一、财务处理与税务合规",
+        "十二、交付验收与质保",
+        "十三、考核激励",
+    ]
+    assert texts[0] == "超储物资内部调剂消耗指引"
+    assert all(chapter in texts for chapter in expected_chapters)
+    assert not any(text in {"职责分工", "信息发布", "调剂价格", "考核激励"} for text in texts)
+    level1 = [paragraph for paragraph in non_empty if paragraph.text.strip() in expected_chapters]
+    assert len(level1) == len(expected_chapters)
+    assert {paragraph.runs[0].font.name for paragraph in level1} == {"黑体"}
+    assert {paragraph.paragraph_format.first_line_indent.pt for paragraph in level1} == {32}
+
+
 def test_generic_formal_text_flag_overrides_standard_spec_auto_detection(tmp_path: Path) -> None:
     input_path = tmp_path / "standard_like_without_toc.docx"
     source = Document()

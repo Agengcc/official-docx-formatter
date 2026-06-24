@@ -84,6 +84,22 @@ UNNUMBERED_HEADING_SUFFIXES = (
 )
 SIGNATURE_HINT_RE = re.compile(r"(公司|集团|局|厅|部|委|办|处|科|院|中心|办公室|专班|小组|委员会)$")
 SPACED_SUBHEADING_SUFFIXES = ("规范", "异常", "图片", "方案", "问题", "措施")
+MANAGEMENT_METHOD_TITLE = "超储物资内部调剂消耗指引"
+MANAGEMENT_METHOD_CHAPTERS = (
+    ("管理职责分工", "集团供应链管理部"),
+    ("上架信息发布要求", "超储物资上架信息"),
+    ("需求匹配与优先调剂", "需求单位在发起"),
+    ("调剂定价规则", "超储物资的调剂价格"),
+    ("资产减值处理", "资产减值是指"),
+    ("资产评估机制", "资产评估是"),
+    ("重置完全价核定", "重置完全价是指"),
+    ("费用承担", "超储物资调剂产生"),
+    ("零值物资快速调拨", "为提高资源流转效率"),
+    ("线上操作流程", "所有调剂业务必须"),
+    ("财务处理与税务合规", "财务处理与税务合规方面"),
+    ("交付验收与质保", "超储物资调剂适用"),
+    ("考核激励", "考核激励层面"),
+)
 
 
 def _engine_imports():
@@ -153,6 +169,9 @@ def split_glued_single_paragraph(lines: list[str]) -> list[str]:
     if len(non_empty) != 1:
         return lines
     text = non_empty[0]
+    management_blocks = _split_management_method(text)
+    if management_blocks is not None:
+        return management_blocks
     if len(text) < 120 or SENTENCE_PUNCT_RE.search(text[:40]):
         return lines
 
@@ -167,6 +186,43 @@ def split_glued_single_paragraph(lines: list[str]) -> list[str]:
     blocks = [title]
     blocks.extend(_split_glued_body(rest))
     return blocks if len(blocks) > 2 else lines
+
+
+def _split_management_method(text: str) -> list[str] | None:
+    compact = text.strip()
+    if not compact.startswith(MANAGEMENT_METHOD_TITLE):
+        return None
+
+    chapter_points: list[tuple[int, str, str]] = []
+    for title, anchor in MANAGEMENT_METHOD_CHAPTERS:
+        position = compact.find(anchor)
+        if position == -1:
+            return None
+        chapter_points.append((position, title, anchor))
+    chapter_points.sort(key=lambda item: item[0])
+
+    if [title for _, title, _ in chapter_points] != [title for title, _ in MANAGEMENT_METHOD_CHAPTERS]:
+        return None
+
+    blocks = [MANAGEMENT_METHOD_TITLE]
+    lead = compact[len(MANAGEMENT_METHOD_TITLE) : chapter_points[0][0]].strip()
+    if lead:
+        blocks.extend(_split_sentence_blocks(lead))
+
+    for index, (position, title, _anchor) in enumerate(chapter_points, 1):
+        body_end = chapter_points[index][0] if index < len(chapter_points) else len(compact)
+        body = compact[position:body_end].strip()
+        blocks.append(f"{_cn_number(index)}、{title}")
+        blocks.extend(_split_sentence_blocks(body))
+    return blocks if len(blocks) > 4 else None
+
+
+def _split_sentence_blocks(text: str) -> list[str]:
+    stripped = text.strip()
+    if not stripped:
+        return []
+    pieces = [piece.strip() for piece in re.split(r"(?<=[。；;])", stripped) if piece.strip()]
+    return pieces or [stripped]
 
 
 def _split_glued_body(text: str) -> list[str]:
@@ -304,6 +360,11 @@ def _cn_number(value: int) -> str:
     numbers = ["零", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十"]
     if 0 <= value <= 10:
         return numbers[value]
+    if value < 20:
+        return f"十{numbers[value - 10]}"
+    if value < 100:
+        tens, ones = divmod(value, 10)
+        return f"{numbers[tens]}十{numbers[ones] if ones else ''}"
     return str(value)
 
 
@@ -476,7 +537,7 @@ def unnumbered_heading_key(text: str) -> Optional[str]:
 
 
 def hierarchy_key(text: str) -> Optional[str]:
-    if re.match(r"^[一二三四五六七八九十][、，,]", text):
+    if re.match(r"^[一二三四五六七八九十]+[、，,]", text):
         return "level1"
     if re.match(r"^(（[一二三四五六七八九十]）|\([一二三四五六七八九十]\))", text):
         return None if looks_like_inline_body(text) else "level2"
