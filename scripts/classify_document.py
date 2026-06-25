@@ -17,6 +17,18 @@ except ImportError:  # pragma: no cover - text mode still works
 SKILL_DIR = Path(__file__).resolve().parents[1]
 DOCUMENT_TYPES_FILE = SKILL_DIR / "references" / "document_types.json"
 GENERIC_FORMAL_TEXT = "通用正式文本"
+LONG_SINGLE_LINE_THRESHOLD = 80
+TITLE_BODY_BOUNDARY_SIGNALS = (
+    "为进一步",
+    "为规范",
+    "为加强",
+    "为落实",
+    "根据",
+    "基本原则",
+    "工作内容",
+    "职责分工",
+)
+GENERIC_FORMAL_SUFFIXES = ("指引", "办法", "细则", "手册")
 
 
 def load_document_types() -> Dict[str, Any]:
@@ -38,6 +50,37 @@ def normalize(text: str) -> str:
 
 def contains_any(text: str, values: List[str]) -> bool:
     return any(value and value in text for value in values)
+
+
+def split_title_and_body(lines: List[str]) -> tuple[str, str]:
+    if not lines:
+        return "", ""
+    if len(lines) > 1:
+        return lines[0], "\n".join(lines[1:])
+
+    line = lines[0]
+    if len(normalize(line)) < LONG_SINGLE_LINE_THRESHOLD:
+        return line, line
+
+    boundary_positions = [line.find(signal) for signal in TITLE_BODY_BOUNDARY_SIGNALS if line.find(signal) > 0]
+    if not boundary_positions:
+        return line, line
+    boundary = min(boundary_positions)
+    title = line[:boundary].strip()
+    body = line[boundary:].strip()
+    return title or line, body or line
+
+
+def generic_formal_candidate(title: str) -> Dict[str, Any] | None:
+    normalized_title = normalize(title)
+    if not normalized_title.endswith(GENERIC_FORMAL_SUFFIXES):
+        return None
+    return {
+        "doc_type": GENERIC_FORMAL_TEXT,
+        "score": 4,
+        "confidence": 0.4,
+        "evidence": ["标题像企业管理类正式文本"],
+    }
 
 
 def has_type_signal(info: Dict[str, Any], title: str, body_text: str) -> Dict[str, bool]:
@@ -139,12 +182,14 @@ def should_ask_user(
 
 def classify_lines(lines: List[str]) -> Dict[str, Any]:
     document_types = load_document_types()
-    title = lines[0] if lines else ""
-    body_text = "\n".join(lines[1:] if len(lines) > 1 else lines)
+    title, body_text = split_title_and_body(lines)
     candidates = [
         score_type(doc_type, info, title, body_text)
         for doc_type, info in document_types.items()
     ]
+    generic_candidate = generic_formal_candidate(title)
+    if generic_candidate:
+        candidates.append(generic_candidate)
     candidates.sort(key=lambda item: item["score"], reverse=True)
     top = candidates[0] if candidates else {"score": 0, "confidence": 0}
     second = candidates[1] if len(candidates) > 1 else {"score": 0}

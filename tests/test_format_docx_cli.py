@@ -445,6 +445,78 @@ def test_generic_formal_text_flag_formats_without_prompt(tmp_path: Path) -> None
     assert report["doc_type"] == "通用正式文本"
 
 
+def test_text_file_mode_writes_report_for_regular_multiline_text(tmp_path: Path) -> None:
+    input_path = tmp_path / "generic_material.txt"
+    input_path.write_text(
+        "\n".join([
+            "专项工作交流材料",
+            "一、基本情况",
+            "有关工作正在推进。",
+        ]),
+        encoding="utf-8",
+    )
+    output_path = tmp_path / "generic_material.docx"
+    report_path = output_path.with_suffix(".report.json")
+
+    result = run_format_cli("--text-file", str(input_path), "-o", str(output_path), "--report", "--generic-formal-text")
+
+    assert result.returncode == 0, result.stderr
+    assert output_path.exists()
+    assert report_path.exists()
+    assert "report=" in result.stdout
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["input_type"] == "text_file"
+    assert report["doc_type"] == "通用正式文本"
+    assert report["glued_text_detected"] is False
+    assert report["raw_line_count"] == 3
+    assert report["output_paragraph_count"] == 3
+    assert report["warnings"] == []
+
+
+def test_text_file_mode_reports_glued_long_text_without_rebuilding_structure(tmp_path: Path) -> None:
+    input_path = tmp_path / "center_warehouse.txt"
+    input_path.write_text(
+        "中心仓建设和管理工作指引"
+        "为进一步落实《开展集团公司2025年区域中心仓建设工作》，规范中心仓建设与作业管理。"
+        "基本原则目标导向：以提升物资集采效率、降低供应链成本为核心。"
+        "设备大类 | 设备小类 | 相关设备 | 功能定位"
+        "安防与监控 | 网络硬件 | 温湿度监控仪、POE交换机 | 基础环境监控与安全防护"
+        + "中心仓作业管理。" * 140,
+        encoding="utf-8",
+    )
+    output_path = tmp_path / "center_warehouse.docx"
+    report_path = output_path.with_suffix(".report.json")
+
+    result = run_format_cli(
+        "--text-file",
+        str(input_path),
+        "-o",
+        str(output_path),
+        "--report",
+        "--generic-formal-text",
+        "--title",
+        "中心仓建设和管理工作指引",
+        "--format-tables",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "warning=glued_plain_text_detected" in result.stdout
+    output = Document(str(output_path))
+    texts = [paragraph.text.strip() for paragraph in output.paragraphs if paragraph.text.strip()]
+    assert len(texts) == 2
+    assert len(output.tables) == 0
+
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["input_type"] == "text_file"
+    assert report["glued_text_detected"] is True
+    assert report["raw_line_count"] == 1
+    assert report["output_paragraph_count"] == 2
+    assert report["warnings"] == [
+        "glued_plain_text_detected: text-file input has too few line breaks; structure and tables were not recovered"
+    ]
+    assert any(operation["kind"] == "text_file_format" for operation in report["operations"])
+
+
 def test_glued_single_paragraph_report_is_split_into_reasonable_blocks(tmp_path: Path) -> None:
     input_path = tmp_path / "glued_report_source.docx"
     source = Document()

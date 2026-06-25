@@ -29,6 +29,7 @@ Do not modify legacy enterprise-specific skills unless the user explicitly asks.
 - For one-paragraph management-method drafts such as `超储物资内部调剂消耗指引`, do not let the model manually summarize or invent bare headings. Use the deterministic script recovery rules to generate standard numbered chapters such as `一、管理职责分工` through `十三、考核激励`.
 - Keep one-paragraph management-method recovery backed by real DOCX regression fixtures such as `管理办法.docx`; do not rely only on synthetic examples when changing these anchors.
 - Do not infer or rebuild complex Word tables from plain glued text in this branch. Preserve and format real source tables when they exist, but leave pure-text table recovery for a separate, evidence-backed feature.
+- For `.txt` or other plain-text inputs with too few line breaks and long content, report `glued_plain_text_detected`; do not automatically recover chapters or convert pipe-delimited plain text into Word tables.
 - Protect URLs, email addresses, times, standards, and code-like identifiers during punctuation normalization.
 - Do not perform any redaction/refill cycle and do not desensitize user documents.
 - Do not automatically add missing body text, issuer/signature, or date.
@@ -106,6 +107,7 @@ Do not ask the user to choose between standard and custom formats. If the user a
    - For management-method long paragraphs with known business anchors, use scripted chapter recovery. Do not save a model-handcrafted output with unnumbered headings such as `职责分工` or `信息发布`; the output must use standard numbered chapter headings.
    - Keep these management-method recovery rules covered by real DOCX samples, especially single-paragraph `管理办法.docx`-style inputs, before changing anchors or chapter boundaries.
    - Preserve real source tables when requested by the table-formatting path, but do not automatically convert plain glued text into complex Word tables in this branch.
+   - For plain-text inputs with very few line breaks and long content, generate a report warning instead of pretending reliable structure recovery happened. The basic formatted `.docx` may still be produced, but it must be described as not having recovered chapters or plain-text tables.
    - Treat hierarchy paragraphs such as `一、`、`（一）`、`1.` and `（1）` as正文层级段落: keep their hierarchy fonts, but use the same two-character first-line indent as ordinary body paragraphs.
    - Apply the confirmed document type's structural rules and the default configuration's typography, margins, line spacing, paragraph spacing, and hierarchy rules.
    - Normalize punctuation and spacing unless the user explicitly asks to preserve characters exactly. Use `--no-normalize-text` for exact-character preservation.

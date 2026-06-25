@@ -74,3 +74,28 @@ def test_ambiguous_question_offers_generic_formal_text_choice():
 
     assert result["ask_user"] is True
     assert "通用正式文本" in result["question"]
+
+
+def test_long_single_line_management_guide_does_not_classify_as_opinion():
+    line = (
+        "中心仓建设和管理工作指引"
+        "为进一步落实《开展集团公司2025年区域中心仓建设工作》，规范中心仓建设与作业管理。"
+        "根据国资委《关于中央企业在建设世界一流企业中加强供应链管理的指导意见》要求，"
+        "推动中心仓整体建设水平提升。"
+    )
+
+    result = classify_lines([line])
+
+    assert result["title"] == "中心仓建设和管理工作指引"
+    assert result["top"]["doc_type"] != "意见"
+    assert result["top"]["doc_type"] == "通用正式文本"
+    assert result["ask_user"] is True
+    assert "通用正式文本" in result["question"]
+
+
+def test_regular_opinion_related_document_types_are_preserved():
+    letter = classify_lines(["关于征求意见的函", "请贵单位研提意见并函复。"])
+    notice = classify_lines(["关于落实指导意见的通知", "现将有关事项通知如下，请认真落实。"])
+
+    assert letter["top"]["doc_type"] == "函"
+    assert notice["top"]["doc_type"] == "通知"

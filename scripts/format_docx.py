@@ -35,6 +35,9 @@ DOCUMENT_TYPES_FILE = SKILL_DIR / "references" / "document_types.json"
 BASE_PROFILE = "standard-party-government"
 GENERIC_FORMAL_TEXT = "通用正式文本"
 STANDARD_SPEC_TEXT = "标准规范文本"
+GLUED_TEXT_WARNING = "glued_plain_text_detected: text-file input has too few line breaks; structure and tables were not recovered"
+GLUED_TEXT_LINE_THRESHOLD = 3
+GLUED_TEXT_CHAR_THRESHOLD = 1000
 W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 W_VAL = f"{{{W_NS}}}val"
 W_ABSTRACT_NUM_ID = f"{{{W_NS}}}abstractNumId"
@@ -798,6 +801,42 @@ def smoke_check(path: Path) -> str:
     return f"paragraphs={len(paragraphs)}"
 
 
+def non_empty_paragraph_count(doc: Document) -> int:
+    return sum(1 for paragraph in doc.paragraphs if paragraph.text.strip())
+
+
+def write_text_file_report(
+    report_path: Path,
+    *,
+    input_path: Path,
+    output_path: Path,
+    profile_id: str,
+    doc_type: str,
+    title: str,
+    raw_line_count: int,
+    output_paragraph_count: int,
+    glued_text_detected: bool,
+    warnings: list[str],
+    operations: list[dict[str, Any]],
+) -> Path:
+    payload = {
+        "input": str(input_path),
+        "output": str(output_path),
+        "input_type": "text_file",
+        "profile_id": profile_id,
+        "doc_type": doc_type,
+        "title": title,
+        "raw_line_count": raw_line_count,
+        "output_paragraph_count": output_paragraph_count,
+        "glued_text_detected": glued_text_detected,
+        "warnings": warnings,
+        "operations": operations,
+    }
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return report_path
+
+
 def _report_path(output_path: Path, report_arg: Optional[str]) -> Optional[Path]:
     if report_arg in {None, ""}:
         return output_path.with_suffix(".report.json")
@@ -822,7 +861,7 @@ def main() -> int:
         nargs="?",
         const="",
         default=None,
-        help="Write a JSON formatting report for DOCX input. Defaults to output_path.with_suffix('.report.json').",
+        help="Write a JSON formatting report. Defaults to output_path.with_suffix('.report.json').",
     )
     parser.add_argument("--no-normalize-text", action="store_true", help="Do not normalize punctuation or spacing")
     parser.add_argument("--page-numbers", action="store_true", help="Insert conservative Word PAGE field page numbers when safe")
@@ -849,6 +888,8 @@ def main() -> int:
     report_path = _report_path(output_path, args.report)
     normalize = not args.no_normalize_text
     report_data = None
+    text_file_report_data = None
+    text_file_glued_warning = False
     footer_inspection = None
     input_path = None
     inline_table_count = 0
@@ -861,11 +902,38 @@ def main() -> int:
         body = build_skeleton_body(args.doc_type)
         doc = build_document(title, args.recipient, body, args.issuer, args.date_text, profile, normalize=normalize, space_mode=args.space_mode)
     elif args.text_file:
-        text = Path(args.text_file).read_text(encoding="utf-8")
+        text_file_path = Path(args.text_file)
+        text = text_file_path.read_text(encoding="utf-8")
         lines = [line.strip() for line in text.splitlines() if line.strip()]
+        glued_text_detected = len(lines) < GLUED_TEXT_LINE_THRESHOLD and len(text.strip()) > GLUED_TEXT_CHAR_THRESHOLD
+        text_file_glued_warning = glued_text_detected
         title = args.title or (lines[0] if lines else "")
         body = lines[1:] if title and lines and title == lines[0] else lines
         doc = build_document(title, args.recipient, body, args.issuer, args.date_text, profile, normalize=normalize, space_mode=args.space_mode)
+        warnings = [GLUED_TEXT_WARNING] if glued_text_detected else []
+        if args.report is not None:
+            text_file_report_data = {
+                "input_path": text_file_path,
+                "profile_id": profile.get("profile_id", args.profile),
+                "doc_type": args.doc_type or "未知",
+                "title": title,
+                "raw_line_count": len(lines),
+                "glued_text_detected": glued_text_detected,
+                "warnings": warnings,
+                "operations": [
+                    {
+                        "kind": "text_file_format",
+                        "target": "document",
+                        "params": {
+                            "raw_line_count": len(lines),
+                            "glued_text_detected": glued_text_detected,
+                            "structure_recovery": "not_attempted",
+                            "table_recovery": "not_attempted",
+                        },
+                        "reason": "format plain text as provided without automatic structure or table recovery",
+                    }
+                ],
+            }
     else:
         if not args.input:
             raise SystemExit("input .docx path is required unless --text-file is used")
@@ -1058,6 +1126,23 @@ def main() -> int:
             operations=report_data["operations"],
         )
         print(f"report={report_path}")
+    if report_path is not None and text_file_report_data is not None:
+        write_text_file_report(
+            report_path,
+            input_path=text_file_report_data["input_path"],
+            output_path=output_path,
+            profile_id=text_file_report_data["profile_id"],
+            doc_type=text_file_report_data["doc_type"],
+            title=text_file_report_data["title"],
+            raw_line_count=text_file_report_data["raw_line_count"],
+            output_paragraph_count=non_empty_paragraph_count(doc),
+            glued_text_detected=text_file_report_data["glued_text_detected"],
+            warnings=text_file_report_data["warnings"],
+            operations=text_file_report_data["operations"],
+        )
+        print(f"report={report_path}")
+    if text_file_glued_warning:
+        print("warning=glued_plain_text_detected")
     print(f"saved={output_path}")
     print(f"profile={profile.get('profile_id', args.profile)}")
     print(f"text_normalization={'off' if args.no_normalize_text else args.space_mode}")
