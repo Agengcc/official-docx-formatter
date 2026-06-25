@@ -82,8 +82,8 @@ official-docx-formatter/
 ## 安装
 
 ```bash
-git clone https://github.com/markliuzz/-official-docx-formatter.git
-cd -official-docx-formatter
+git clone https://github.com/Agengcc/official-docx-formatter.git
+cd official-docx-formatter
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install -e ".[dev]"

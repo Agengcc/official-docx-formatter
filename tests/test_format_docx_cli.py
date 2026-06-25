@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -12,6 +11,7 @@ from docx.oxml.ns import qn
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 FORMAT_CLI = PROJECT_ROOT / "scripts" / "format_docx.py"
+PUBLIC_SERVICE_FIXTURE = PROJECT_ROOT / "tests" / "fixtures" / "docx" / "public_service_guide_single_paragraph.docx"
 
 
 def run_format_cli(*args: str) -> subprocess.CompletedProcess[str]:
@@ -99,12 +99,40 @@ def test_confident_notice_fixture_generates_docx_and_report(tmp_path: Path) -> N
     assert "report=" in result.stdout
 
     report = json.loads(report_path.read_text(encoding="utf-8"))
-    assert report["input"] == str(input_path)
-    assert report["output"] == str(output_path)
+    assert report["input"] == input_path.name
+    assert report["output"] == output_path.name
     assert report["profile_id"] == "standard-party-government"
     assert report["doc_type"] == "通知"
+    assert report["run_config"] == {
+        "profile_id": "standard-party-government",
+        "doc_type": "通知",
+        "text_normalization": "keep_en_boundary",
+        "space_mode": "keep_en_boundary",
+        "include_local_paths": False,
+    }
     assert report["structure"]["title_indices"]
     assert report["operations"]
+
+
+def test_report_can_include_local_paths_when_explicitly_requested(tmp_path: Path) -> None:
+    input_path = make_docx(
+        tmp_path / "notice_source.docx",
+        [
+            "关于开展安全生产检查的通知",
+            "各部门：",
+            "请按要求开展安全生产检查。",
+        ],
+    )
+    output_path = tmp_path / "notice.docx"
+    report_path = output_path.with_suffix(".report.json")
+
+    result = run_format_cli(str(input_path), "-o", str(output_path), "--include-local-paths")
+
+    assert result.returncode == 0, result.stderr
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["input"] == str(input_path)
+    assert report["output"] == str(output_path)
+    assert report["run_config"]["include_local_paths"] is True
 
 
 def test_ambiguous_fixture_returns_2_and_does_not_generate_docx(tmp_path: Path) -> None:
@@ -223,25 +251,25 @@ def test_format_tables_flag_preserves_table_and_formats_cell_text(tmp_path: Path
 
 
 def test_formatting_does_not_treat_numbered_colon_heading_as_recipient_or_drop_tables(tmp_path: Path) -> None:
-    input_path = tmp_path / "management_rule_source.docx"
+    input_path = tmp_path / "public_service_rule_source.docx"
     source = Document()
     for text in [
-        "超储物资内部调剂消耗指引",
-        "一、超储物资定义与识别",
-        "1.物资定义：超储物资是指库龄通常在一年以内，因项目结余、采购计划变更或储备定额调整而形成的，库存数量超出实际需求但物理性能完好、具备完整使用价值的备品配件及材料。",
-        "2.识别与上架标准：基层企业应通过 ERP 系统或物资管理模块，定期筛选“无动态、高库存”物资，将其列入超储物资调剂清单进行专项管理。",
+        "公共服务事项办理指引",
+        "一、公共服务事项定义与识别",
+        "1.事项定义：公共服务事项是指面向社会公众提供的咨询、受理、审查、反馈等服务事项。",
+        "2.识别与公开标准：服务机构应通过统一服务平台，定期梳理高频事项，将其列入办事指南清单进行专项管理。",
         "二、组织职责与权限分工",
-        "1.集团供应链管理部：作为归口管理部门，负责制定管理制度，建立信息平台，并对各单位调剂完成情况进行绩效考核。",
-        "2.集团物资供应中心（调剂中心）：负责跨二级单位调剂的交易撮合、物流协调及平台调剂模块的日常运营。",
-        "3.二级单位（管理中心）：负责本单位内部超储物资的认定、价格审批及所属基层企业的利库监督。",
-        "4.基层企业（执行主体）：负责实物信息的实时发布、质量维护、实物交接及账务处理。",
+        "1.办事指南编制部门：作为归口管理部门，负责制定事项清单，建立信息平台，并对办理情况进行定期评估。",
+        "2.服务窗口：负责现场咨询、材料接收、一次告知和办理进度反馈。",
+        "3.技术支持部门：负责平台运行、账号权限、电子材料上传和系统故障处理。",
+        "4.业务办理部门：负责事项审核、结果确认、资料归档及问题反馈。",
         "三、信息发布规范",
-        "1.信息发布规范：上架信息须包含物资编码、参数规格、交易价格、实物照片及技术说明书等关键要素。",
-        "2.动态更新机制：当物资被锁定、消耗或因其他原因发生状态变化时，发布单位应在24小时内完成信息同步。",
-        "四、“应选未选”理由审核标准",
-        "1.强制利库规则：需求单位在发起采购申请前，系统将自动匹配集团范围内超储物资库。若存在同类物资，原则上必须优先调剂使用。",
-        "2.合理拒选理由：",
-        "（一）差异化定价逻辑",
+        "1.信息发布规范：事项信息须包含事项名称、申请条件、办理材料、办理地点、办理机构和办理流程等关键要素。",
+        "2.动态更新机制：当政策依据、材料要求或办理地址发生变化时，发布单位应在24小时内完成信息同步。",
+        "四、“应办未办”理由审核标准",
+        "1.主动提醒规则：申请人在发起办理申请前，系统将自动匹配相关办事指南。若存在同类事项，原则上应优先引导线上办理。",
+        "2.合理退回理由：",
+        "（一）材料差异处理逻辑",
     ]:
         source.add_paragraph(text)
     table = source.add_table(rows=2, cols=4)
@@ -255,7 +283,7 @@ def test_formatting_does_not_treat_numbered_colon_heading_as_recipient_or_drop_t
     table.cell(1, 3).text = "按规则执行"
     source.add_paragraph("（二）核心概念定义与流程")
     source.save(str(input_path))
-    output_path = tmp_path / "management_rule.docx"
+    output_path = tmp_path / "public_service_rule.docx"
 
     result = run_format_cli(str(input_path), "-o", str(output_path), "--assume-detected-type")
 
@@ -263,33 +291,33 @@ def test_formatting_does_not_treat_numbered_colon_heading_as_recipient_or_drop_t
     output = Document(str(output_path))
     texts = [paragraph.text.strip() for paragraph in output.paragraphs if paragraph.text.strip()]
     assert texts[:15] == [
-        "超储物资内部调剂消耗指引",
-        "一、超储物资定义与识别",
-        "1.物资定义：超储物资是指库龄通常在一年以内，因项目结余、采购计划变更或储备定额调整而形成的，库存数量超出实际需求但物理性能完好、具备完整使用价值的备品配件及材料。",
-        "2.识别与上架标准：基层企业应通过 ERP 系统或物资管理模块，定期筛选“无动态、高库存”物资，将其列入超储物资调剂清单进行专项管理。",
+        "公共服务事项办理指引",
+        "一、公共服务事项定义与识别",
+        "1.事项定义：公共服务事项是指面向社会公众提供的咨询、受理、审查、反馈等服务事项。",
+        "2.识别与公开标准：服务机构应通过统一服务平台，定期梳理高频事项，将其列入办事指南清单进行专项管理。",
         "二、组织职责与权限分工",
-        "1.集团供应链管理部：作为归口管理部门，负责制定管理制度，建立信息平台，并对各单位调剂完成情况进行绩效考核。",
-        "2.集团物资供应中心（调剂中心）：负责跨二级单位调剂的交易撮合、物流协调及平台调剂模块的日常运营。",
-        "3.二级单位（管理中心）：负责本单位内部超储物资的认定、价格审批及所属基层企业的利库监督。",
-        "4.基层企业（执行主体）：负责实物信息的实时发布、质量维护、实物交接及账务处理。",
+        "1.办事指南编制部门：作为归口管理部门，负责制定事项清单，建立信息平台，并对办理情况进行定期评估。",
+        "2.服务窗口：负责现场咨询、材料接收、一次告知和办理进度反馈。",
+        "3.技术支持部门：负责平台运行、账号权限、电子材料上传和系统故障处理。",
+        "4.业务办理部门：负责事项审核、结果确认、资料归档及问题反馈。",
         "三、信息发布规范",
-        "1.信息发布规范：上架信息须包含物资编码、参数规格、交易价格、实物照片及技术说明书等关键要素。",
-        "2.动态更新机制：当物资被锁定、消耗或因其他原因发生状态变化时，发布单位应在24小时内完成信息同步。",
-        "四、“应选未选”理由审核标准",
-        "1.强制利库规则：需求单位在发起采购申请前，系统将自动匹配集团范围内超储物资库。若存在同类物资，原则上必须优先调剂使用。",
-        "2.合理拒选理由：",
+        "1.信息发布规范：事项信息须包含事项名称、申请条件、办理材料、办理地点、办理机构和办理流程等关键要素。",
+        "2.动态更新机制：当政策依据、材料要求或办理地址发生变化时，发布单位应在24小时内完成信息同步。",
+        "四、“应办未办”理由审核标准",
+        "1.主动提醒规则：申请人在发起办理申请前，系统将自动匹配相关办事指南。若存在同类事项，原则上应优先引导线上办理。",
+        "2.合理退回理由：",
     ]
     assert len(output.tables) == 1
     blocks = document_body_block_texts(output_path)
-    assert blocks.index("（一）差异化定价逻辑") < blocks.index("TABLE: 交易主体场景 | 价值门槛 | 定价基础 | 评估要求")
+    assert blocks.index("（一）材料差异处理逻辑") < blocks.index("TABLE: 交易主体场景 | 价值门槛 | 定价基础 | 评估要求")
     assert blocks.index("TABLE: 交易主体场景 | 价值门槛 | 定价基础 | 评估要求") < blocks.index("（二）核心概念定义与流程")
 
 
 def test_formatting_preserves_multiline_title_style(tmp_path: Path) -> None:
     input_path = make_docx(
-        tmp_path / "multiline_title_source.docx",
-        [
-            "闲置物资调剂完善后的流程与",
+            tmp_path / "multiline_title_source.docx",
+            [
+            "公共服务流程优化后的办理路径与",
             "原流程对比说明",
             "一、总体情况",
             "本材料说明流程差异。",
@@ -302,7 +330,7 @@ def test_formatting_preserves_multiline_title_style(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     output = Document(str(output_path))
     non_empty = [paragraph for paragraph in output.paragraphs if paragraph.text.strip()]
-    assert non_empty[0].text.strip() == "闲置物资调剂完善后的流程与"
+    assert non_empty[0].text.strip() == "公共服务流程优化后的办理路径与"
     assert non_empty[1].text.strip() == "原流程对比说明"
     for paragraph in non_empty[:2]:
         assert paragraph.alignment == 1
@@ -345,13 +373,13 @@ def test_standard_text_document_uses_standard_branch_and_specific_layout(tmp_pat
         "目次",
         "前    言",
         "1  范围",
-        "3.1  闲置物资",
+        "3.1  服务事项",
         "前    言",
         "本标准依据相关规则起草。",
         "1  范围",
         "本文件规定了供应链服务范围。",
-        "3.1  闲置物资",
-        "长期未使用但仍具备使用价值的物资。",
+        "3.1  服务事项",
+        "面向公众提供咨询、受理、审查、反馈等服务的事项。",
     ]:
         source.add_paragraph(text)
     table = source.add_table(rows=2, cols=3)
@@ -376,7 +404,7 @@ def test_standard_text_document_uses_standard_branch_and_specific_layout(tmp_pat
     assert texts[body_preface_index + 1].startswith("本标准依据")
 
     toc_chapter = next(paragraph for paragraph in non_empty if paragraph.text.strip() == "1  范围")
-    toc_clause = next(paragraph for paragraph in non_empty if paragraph.text.strip() == "3.1  闲置物资")
+    toc_clause = next(paragraph for paragraph in non_empty if paragraph.text.strip() == "3.1  服务事项")
     assert toc_chapter.runs[0].bold is True
     assert toc_clause.runs[0].bold is False
     assert table_grid_widths(output_path) == [1061, 3892, 3892]
@@ -458,15 +486,24 @@ def test_text_file_mode_writes_report_for_regular_multiline_text(tmp_path: Path)
     output_path = tmp_path / "generic_material.docx"
     report_path = output_path.with_suffix(".report.json")
 
-    result = run_format_cli("--text-file", str(input_path), "-o", str(output_path), "--report", "--generic-formal-text")
+    result = run_format_cli("--text-file", str(input_path), "-o", str(output_path), "--generic-formal-text")
 
     assert result.returncode == 0, result.stderr
     assert output_path.exists()
     assert report_path.exists()
     assert "report=" in result.stdout
     report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["input"] == input_path.name
+    assert report["output"] == output_path.name
     assert report["input_type"] == "text_file"
     assert report["doc_type"] == "通用正式文本"
+    assert report["run_config"] == {
+        "profile_id": "standard-party-government",
+        "doc_type": "通用正式文本",
+        "text_normalization": "keep_en_boundary",
+        "space_mode": "keep_en_boundary",
+        "include_local_paths": False,
+    }
     assert report["glued_text_detected"] is False
     assert report["raw_line_count"] == 3
     assert report["output_paragraph_count"] == 3
@@ -517,20 +554,43 @@ def test_text_file_mode_reports_glued_long_text_without_rebuilding_structure(tmp
     assert any(operation["kind"] == "text_file_format" for operation in report["operations"])
 
 
+def test_report_records_requested_space_mode(tmp_path: Path) -> None:
+    input_path = make_docx(
+        tmp_path / "notice_source.docx",
+        [
+            "关于开展安全生产检查的通知",
+            "各部门：",
+            "请按要求开展安全生产检查。",
+        ],
+    )
+    output_path = tmp_path / "notice_remove_spaces.docx"
+    report_path = output_path.with_suffix(".report.json")
+
+    result = run_format_cli(str(input_path), "-o", str(output_path), "--space-mode", "remove_all")
+
+    assert result.returncode == 0, result.stderr
+    assert "text_normalization=remove_all" in result.stdout
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["run_config"]["space_mode"] == "remove_all"
+    text_ops = [operation for operation in report["operations"] if operation["kind"] == "text_normalization"]
+    assert text_ops
+    assert {operation["params"]["space_mode"] for operation in text_ops} == {"remove_all"}
+
+
 def test_glued_single_paragraph_report_is_split_into_reasonable_blocks(tmp_path: Path) -> None:
     input_path = tmp_path / "glued_report_source.docx"
     source = Document()
     paragraph = source.add_paragraph(
-        "闲置及超储专区上架规范自查报告"
-        "为提高闲置专区及超储专区商品信息的规范性和专业性，进一步提升专区上架管理水平，组织开展了自查工作。"
+        "公共服务事项办理规范自查报告"
+        "为提高公共服务事项信息的规范性和专业性，进一步提升事项办理管理水平，组织开展了自查工作。"
         "现将自查情况报告如下。"
         "存在的问题"
-        "经全面排查，闲置及超储专区在架物资的计量单位字段存在大量英文缩写，影响商品信息的统一展示。"
+        "经全面排查，部分事项的办理材料字段存在表述不统一问题，影响事项信息的统一展示。"
         "解决措施"
-        "针对英文计量单位问题，计划采取分步整改的方式，将英文缩写统一替换为中文表述。"
+        "针对材料表述问题，计划采取分步整改的方式，将不统一表述调整为规范表述。"
         "时间计划"
-        "按期完成英文单位批量替换申请的提交工作，并完成相关整改复核验收。"
-        "运营专班"
+        "按期完成材料字段批量核对工作，并完成相关整改复核验收。"
+        "服务专班"
     )
     paragraph.alignment = 1
     source.save(str(input_path))
@@ -544,15 +604,15 @@ def test_glued_single_paragraph_report_is_split_into_reasonable_blocks(tmp_path:
     output = Document(str(output_path))
     texts = [paragraph.text.strip() for paragraph in output.paragraphs if paragraph.text.strip()]
     assert texts == [
-        "闲置及超储专区上架规范自查报告",
-        "为提高闲置专区及超储专区商品信息的规范性和专业性，进一步提升专区上架管理水平，组织开展了自查工作。现将自查情况报告如下。",
+        "公共服务事项办理规范自查报告",
+        "为提高公共服务事项信息的规范性和专业性，进一步提升事项办理管理水平，组织开展了自查工作。现将自查情况报告如下。",
         "存在的问题",
-        "经全面排查，闲置及超储专区在架物资的计量单位字段存在大量英文缩写，影响商品信息的统一展示。",
+        "经全面排查，部分事项的办理材料字段存在表述不统一问题，影响事项信息的统一展示。",
         "解决措施",
-        "针对英文计量单位问题，计划采取分步整改的方式，将英文缩写统一替换为中文表述。",
+        "针对材料表述问题，计划采取分步整改的方式，将不统一表述调整为规范表述。",
         "时间计划",
-        "按期完成英文单位批量替换申请的提交工作，并完成相关整改复核验收。",
-        "运营专班",
+        "按期完成材料字段批量核对工作，并完成相关整改复核验收。",
+        "服务专班",
     ]
     assert output.paragraphs[0].alignment == 1
     assert output.paragraphs[1].alignment != 1
@@ -572,16 +632,16 @@ def test_unnumbered_headings_and_subtitle_are_structured(tmp_path: Path) -> None
     input_path = make_docx(
         input_path,
         [
-            "闲置及超储专区上架规范自查报告",
+            "公共服务事项办理规范自查报告",
             "整改情况说明",
-            "为提高专区上架管理水平，组织开展了自查工作。",
+            "为提高事项办理管理水平，组织开展了自查工作。",
             "存在的问题",
-            "部分物资缺少商品图片，影响物资的正常展示和采购决策效率。",
+            "部分事项缺少示范文本，影响申请人准确理解办理材料要求。",
             "解决措施",
-            "已安排专人对接无图片物资的核查工作，并反馈至对应单位补充图片。",
+            "已安排专人对接示范文本的核查工作，并反馈至对应部门补充说明。",
             "时间计划",
-            "按期完成无图片物资的清单排查、单位对接及图片补充系统更新。",
-            "运营专班",
+            "按期完成示范文本清单排查、部门对接及材料补充更新。",
+            "服务专班",
         ],
     )
     output_path = tmp_path / "unnumbered_headings_formatted.docx"
@@ -591,7 +651,7 @@ def test_unnumbered_headings_and_subtitle_are_structured(tmp_path: Path) -> None
     assert result.returncode == 0, result.stderr
     output = Document(str(output_path))
     non_empty = [paragraph for paragraph in output.paragraphs if paragraph.text.strip()]
-    assert [paragraph.text.strip() for paragraph in non_empty[:2]] == ["闲置及超储专区上架规范自查报告", "整改情况说明"]
+    assert [paragraph.text.strip() for paragraph in non_empty[:2]] == ["公共服务事项办理规范自查报告", "整改情况说明"]
     assert non_empty[0].alignment == 1
     assert non_empty[1].alignment == 1
     assert non_empty[1].runs[0].font.name == "方正小标宋简体"
@@ -601,7 +661,7 @@ def test_unnumbered_headings_and_subtitle_are_structured(tmp_path: Path) -> None
         assert heading.runs[0].font.name == "黑体"
         assert heading.runs[0].font.bold is True
     signature = non_empty[-1]
-    assert signature.text.strip() == "运营专班"
+    assert signature.text.strip() == "服务专班"
     assert signature.runs[0].font.name == "仿宋_GB2312"
     assert signature.runs[0].font.bold is False
 
@@ -610,26 +670,26 @@ def test_spaced_single_paragraph_report_recovers_nested_hierarchy(tmp_path: Path
     input_path = tmp_path / "spaced_glued_report_source.docx"
     source = Document()
     source.add_paragraph(
-        "闲置及超储专区上架规范自查报告 "
-        "为提高闲置专区及超储专区商品信息的规范性和专业性，进一步提升专区上架管理水平，根据集团商品信息管理相关要求，组织开展了闲置及超储专区上架规范自查工作。现将自查情况报告如下。 "
+        "公共服务事项办理规范自查报告 "
+        "为提高公共服务事项信息的规范性和专业性，进一步提升事项办理管理水平，根据事项公开相关要求，组织开展了公共服务事项办理规范自查工作。现将自查情况报告如下。 "
         "存在的问题 "
-        "计量单位不符合商城商品规范 "
-        "经全面排查，闲置及超储专区在架物资的计量单位字段存在大量英文缩写，各类英文单位不符合商城商品信息规范要求，影响商城信息标准化管理及商品信息的统一展示。 "
-        "上架价格存在异常 "
-        "在自查过程中发现，部分物资的上架价格与框架物资价格对比差异较大。 "
-        "部分物资缺少商品图片 "
-        "商品图片是采购人员对待上架物资规格型号进行直观判断的重要依据。 "
+        "材料清单不符合事项公开规范 "
+        "经全面排查，部分事项的材料清单字段存在表述不统一问题，影响事项信息标准化管理及统一展示。 "
+        "办理时限存在异常 "
+        "在自查过程中发现，部分事项的承诺办理时限与实际流程要求差异较大。 "
+        "部分事项缺少示范文本 "
+        "示范文本是申请人对办理材料要求进行直观判断的重要依据。 "
         "解决措施 "
-        "计量单位不规范问题整改方案 "
-        "针对英文计量单位问题，计划采取分步整改的方式。 "
-        "上架价格异常问题整改方案 "
-        "针对已标记的疑似填错记录，物资管理员将逐一联系对应单位进行价格核实。 "
-        "商品图片缺失问题整改方案 "
-        "已安排专人对接无图片物资的核查工作。 "
+        "材料清单不规范问题整改方案 "
+        "针对材料清单表述问题，计划采取分步整改的方式。 "
+        "办理时限异常问题整改方案 "
+        "针对已标记的疑似异常记录，事项管理员将逐一联系对应部门进行时限核实。 "
+        "示范文本缺失问题整改方案 "
+        "已安排专人对接缺少示范文本事项的核查工作。 "
         "时间计划 "
-        "按期完成英文单位批量替换申请的提交工作。 "
+        "按期完成材料清单批量核对申请的提交工作。 "
         "后续将定期跟踪整改进度，确保各项整改措施按计划推进落实。 "
-        "运营专班"
+        "服务专班"
     )
     source.save(str(input_path))
     output_path = tmp_path / "spaced_glued_report_formatted.docx"
@@ -641,26 +701,26 @@ def test_spaced_single_paragraph_report_recovers_nested_hierarchy(tmp_path: Path
     non_empty = [paragraph for paragraph in output.paragraphs if paragraph.text.strip()]
     texts = [paragraph.text.strip() for paragraph in non_empty]
     assert texts == [
-        "闲置及超储专区上架规范自查报告",
-        "为提高闲置专区及超储专区商品信息的规范性和专业性，进一步提升专区上架管理水平，根据集团商品信息管理相关要求，组织开展了闲置及超储专区上架规范自查工作。现将自查情况报告如下。",
+        "公共服务事项办理规范自查报告",
+        "为提高公共服务事项信息的规范性和专业性，进一步提升事项办理管理水平，根据事项公开相关要求，组织开展了公共服务事项办理规范自查工作。现将自查情况报告如下。",
         "一、存在的问题",
-        "（一）计量单位不符合商城商品规范",
-        "经全面排查，闲置及超储专区在架物资的计量单位字段存在大量英文缩写，各类英文单位不符合商城商品信息规范要求，影响商城信息标准化管理及商品信息的统一展示。",
-        "（二）上架价格存在异常",
-        "在自查过程中发现，部分物资的上架价格与框架物资价格对比差异较大。",
-        "（三）部分物资缺少商品图片",
-        "商品图片是采购人员对待上架物资规格型号进行直观判断的重要依据。",
+        "（一）材料清单不符合事项公开规范",
+        "经全面排查，部分事项的材料清单字段存在表述不统一问题，影响事项信息标准化管理及统一展示。",
+        "（二）办理时限存在异常",
+        "在自查过程中发现，部分事项的承诺办理时限与实际流程要求差异较大。",
+        "（三）部分事项缺少示范文本",
+        "示范文本是申请人对办理材料要求进行直观判断的重要依据。",
         "二、解决措施",
-        "（一）计量单位不规范问题整改方案",
-        "针对英文计量单位问题，计划采取分步整改的方式。",
-        "（二）上架价格异常问题整改方案",
-        "针对已标记的疑似填错记录，物资管理员将逐一联系对应单位进行价格核实。",
-        "（三）商品图片缺失问题整改方案",
-        "已安排专人对接无图片物资的核查工作。",
+        "（一）材料清单不规范问题整改方案",
+        "针对材料清单表述问题，计划采取分步整改的方式。",
+        "（二）办理时限异常问题整改方案",
+        "针对已标记的疑似异常记录，事项管理员将逐一联系对应部门进行时限核实。",
+        "（三）示范文本缺失问题整改方案",
+        "已安排专人对接缺少示范文本事项的核查工作。",
         "三、时间计划",
-        "按期完成英文单位批量替换申请的提交工作。",
+        "按期完成材料清单批量核对申请的提交工作。",
         "后续将定期跟踪整改进度，确保各项整改措施按计划推进落实。",
-        "运营专班",
+        "服务专班",
     ]
     level1 = [paragraph for paragraph in non_empty if paragraph.text.strip().startswith(("一、", "二、", "三、"))]
     level2 = [paragraph for paragraph in non_empty if paragraph.text.strip().startswith(("（一）", "（二）", "（三）"))]
@@ -670,32 +730,30 @@ def test_spaced_single_paragraph_report_recovers_nested_hierarchy(tmp_path: Path
     assert non_empty[-1].runs[0].font.name == "仿宋_GB2312"
 
 
-def test_management_method_single_paragraph_uses_scripted_chapter_recovery(tmp_path: Path) -> None:
-    input_path = tmp_path / "management_method_source.docx"
+def test_public_service_single_paragraph_uses_scripted_chapter_recovery(tmp_path: Path) -> None:
+    input_path = tmp_path / "public_service_source.docx"
     source = Document()
     source.add_paragraph(
-        "超储物资内部调剂消耗指引"
-        "超储物资是指库龄通常在一年以内，因项目结余、采购计划变更或储备定额调整而形成的，库存数量超出实际需求但物理性能完好、具备完整使用价值的备品配件及材料。"
-        "基层企业应通过 ERP 系统或物资管理模块，定期筛选“无动态、高库存”物资，将其列入超储物资调剂清单进行专项管理。"
-        "集团供应链管理部作为归口管理部门，负责制定管理制度，建立信息平台，并对各单位调剂完成情况进行绩效考核。"
-        "集团物资供应中心（调剂中心）负责跨二级单位调剂的交易撮合、物流协调及华能商城调剂模块的日常运营。"
-        "二级单位（管理中心）负责本单位内部超储物资的认定、价格审批及所属基层企业的利库监督。"
-        "基层企业（执行主体）负责实物信息的实时发布、质量维护、实物交接及账务处理。"
-        "超储物资上架信息须包含物资编码、参数规格、交易价格、实物照片及技术说明书等关键要素。"
-        "需求单位在发起采购申请前，系统将自动匹配集团范围内超储物资库。"
-        "超储物资的调剂价格主要依据交易双方的股权性质及资产账面价值确定。"
-        "资产减值是指资产在调剂时的可收回金额低于其账面余额的差额。"
-        "资产评估是通过专业机构评定确定调剂资产在特定时点的公允价值。"
-        "重置完全价是指在当前市场环境下，重新购置与该物资完全相同的新品所需的全部成本。"
-        "超储物资调剂产生的装卸、运输及保险费用原则上由使用方（需求单位）承担。"
-        "为提高资源流转效率，集团公司授权物资供应中心对账面价值为零但仍有使用价值的超储物资，行使跨二级单位调拨的快速审批权。"
-        "所有调剂业务必须在华能商城“联储联备专区”完成从发布、下单、发货到确认验收的全流程线上闭环操作。"
-        "财务处理与税务合规方面，调出方产生的调剂收入计入“其他业务收入”或“营业外收入”。"
-        "超储物资调剂适用“现状交付、风险自担”原则。"
-        "考核激励层面，若超储物资调剂导致调出方产生资产损失并降低利润，在年度考核计算时，该部分损失不计入当年利润指标考核计算值。"
+        "公共服务事项办理指引"
+        "公共服务事项是指面向社会公众提供的咨询、受理、审查、反馈等服务事项，办理过程应当公开透明、便捷高效。"
+        "线上服务平台应集中展示事项名称、设定依据、申请条件、办理材料、办理地点、办理机构、收费标准、办理时间、联系电话和办理流程。"
+        "办事指南编制部门负责事项内容维护、流程说明、示范文本发布和常见问题更新。"
+        "服务窗口负责现场咨询、材料接收、一次告知和办理进度反馈。"
+        "技术支持部门负责平台运行、账号权限、电子材料上传和系统故障处理。"
+        "办理材料清单应列明材料名称、来源渠道、纸质或电子形式、份数要求、签名签章要求和示范样例。"
+        "申请人在提交申请前，应先核对事项条件和材料清单。"
+        "受理标准主要依据事项公开条件、材料完整性和申请主体资格确定。"
+        "补正告知是指受理人员发现材料不完整或者格式不符合要求时，一次性告知需要补正的内容。"
+        "审查办理是通过材料核验、业务复核和必要的现场核查，确认申请事项是否符合办理条件。"
+        "结果送达是指通过现场领取、邮寄送达或者线上下载等方式向申请人反馈办理结果。"
+        "为提高办理效率，服务机构应对高频事项设置快速办理通道。"
+        "所有办理过程应在统一服务平台记录申请、受理、补正、审查、办结和评价等关键节点。"
+        "监督评价方面，申请人可以对办理时限、服务态度、结果反馈和问题处理情况进行评价。"
+        "资料归档适用“谁办理、谁归档”的原则。"
+        "改进机制层面，服务机构应定期汇总咨询问题、退回原因和用户评价，持续优化办事指南和办理流程。"
     )
     source.save(str(input_path))
-    output_path = tmp_path / "management_method_formatted.docx"
+    output_path = tmp_path / "public_service_formatted.docx"
 
     result = run_format_cli(str(input_path), "-o", str(output_path), "--report", "--assume-detected-type")
 
@@ -704,32 +762,31 @@ def test_management_method_single_paragraph_uses_scripted_chapter_recovery(tmp_p
     non_empty = [paragraph for paragraph in output.paragraphs if paragraph.text.strip()]
     texts = [paragraph.text.strip() for paragraph in non_empty]
     expected_chapters = [
-        "一、管理职责分工",
-        "二、上架信息发布要求",
-        "三、需求匹配与优先调剂",
-        "四、调剂定价规则",
-        "五、资产减值处理",
-        "六、资产评估机制",
-        "七、重置完全价核定",
-        "八、费用承担",
-        "九、零值物资快速调拨",
-        "十、线上操作流程",
-        "十一、财务处理与税务合规",
-        "十二、交付验收与质保",
-        "十三、考核激励",
+        "一、职责分工",
+        "二、办理材料清单",
+        "三、申请前核对",
+        "四、受理标准",
+        "五、补正告知",
+        "六、审查办理",
+        "七、结果送达",
+        "八、高频事项快办",
+        "九、全流程记录",
+        "十、监督评价",
+        "十一、资料归档",
+        "十二、问题汇总",
+        "十三、持续改进",
     ]
-    assert texts[0] == "超储物资内部调剂消耗指引"
+    assert texts[0] == "公共服务事项办理指引"
     assert all(chapter in texts for chapter in expected_chapters)
-    assert not any(text in {"职责分工", "信息发布", "调剂价格", "考核激励"} for text in texts)
+    assert not any(text in {"职责分工", "办理材料", "监督评价", "持续改进"} for text in texts)
     level1 = [paragraph for paragraph in non_empty if paragraph.text.strip() in expected_chapters]
     assert len(level1) == len(expected_chapters)
     assert {paragraph.runs[0].font.name for paragraph in level1} == {"黑体"}
     assert {paragraph.paragraph_format.first_line_indent.pt for paragraph in level1} == {32}
 
 
-def test_management_method_real_single_paragraph_fixture_recovers_structure(tmp_path: Path) -> None:
-    fixture_path = Path("/Users/liuzigeng/Ageng的自媒体/公文写作项目/xiaohongshu/对比图/管理办法.docx")
-    assert fixture_path.exists()
+def test_public_service_real_single_paragraph_fixture_recovers_structure(tmp_path: Path) -> None:
+    assert PUBLIC_SERVICE_FIXTURE.exists()
 
     entry_modes = [
         ("assume_detected", ["--assume-detected-type"]),
@@ -737,32 +794,30 @@ def test_management_method_real_single_paragraph_fixture_recovers_structure(tmp_
         ("generic_doc_type", ["--doc-type", "通用正式文本"]),
     ]
     expected_fragments = [
-        "超储物资内部调剂消耗指引",
-        "调剂定价规则",
-        "财务处理与税务合规",
-        "考核激励",
+        "公共服务事项办理指引",
+        "受理标准",
+        "监督评价",
+        "持续改进",
     ]
 
     for name, extra_args in entry_modes:
-        input_path = tmp_path / f"{name}_source.docx"
-        shutil.copyfile(fixture_path, input_path)
         output_path = tmp_path / f"{name}_formatted.docx"
         report_path = output_path.with_suffix(".report.json")
 
-        result = run_format_cli(str(input_path), "-o", str(output_path), "--report", *extra_args)
+        result = run_format_cli(str(PUBLIC_SERVICE_FIXTURE), "-o", str(output_path), "--report", *extra_args)
 
         assert result.returncode == 0, result.stderr
         output = Document(str(output_path))
         texts = [paragraph.text.strip() for paragraph in output.paragraphs if paragraph.text.strip()]
         assert len(texts) > 10
-        assert texts[0] == "超储物资内部调剂消耗指引"
+        assert texts[0] == "公共服务事项办理指引"
         assert all(any(fragment in text for text in texts) for fragment in expected_fragments)
         assert not (len(texts) == 1 and len(texts[0]) > 1000)
 
         report = json.loads(report_path.read_text(encoding="utf-8"))
         recovery_ops = [operation for operation in report["operations"] if operation["kind"] == "chapter_recovery"]
         assert recovery_ops
-        assert recovery_ops[0]["params"]["method"] == "management_method"
+        assert recovery_ops[0]["params"]["method"] == "public_service_guide"
 
 
 def test_generic_formal_text_flag_overrides_standard_spec_auto_detection(tmp_path: Path) -> None:

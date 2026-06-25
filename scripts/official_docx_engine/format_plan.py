@@ -21,6 +21,7 @@ def build_format_plan(
     profile_id: str,
     doc_type: str,
     normalize_text: bool,
+    space_mode: str = "keep_en_boundary",
 ) -> FormatPlan:
     operations: list[FormatOperation] = [
         FormatOperation(
@@ -72,7 +73,7 @@ def build_format_plan(
                         kind="text_normalization",
                         target="paragraph",
                         paragraph_index=paragraph.index,
-                        params={"space_mode": "keep_en_boundary"},
+                        params={"space_mode": space_mode},
                         reason="normalize punctuation and spacing conservatively",
                     )
                 )

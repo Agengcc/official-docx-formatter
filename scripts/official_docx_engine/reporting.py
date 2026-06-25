@@ -42,6 +42,11 @@ def structure_to_dict(structure: StructureAnalysis) -> dict[str, Any]:
     }
 
 
+def report_path_value(path: str | Path, *, include_local_paths: bool) -> str:
+    value = Path(path)
+    return str(value) if include_local_paths else value.name
+
+
 def write_report_json(
     report_path: str | Path,
     *,
@@ -52,15 +57,18 @@ def write_report_json(
     structure: StructureAnalysis,
     issues: Iterable[DiagnosticIssue],
     operations: Iterable[FormatOperation],
+    include_local_paths: bool = False,
+    run_config: dict[str, Any] | None = None,
 ) -> Path:
     """Write the formatting report JSON and return its path."""
 
     path = Path(report_path)
     payload = {
-        "input": str(input_path),
-        "output": str(output_path),
+        "input": report_path_value(input_path, include_local_paths=include_local_paths),
+        "output": report_path_value(output_path, include_local_paths=include_local_paths),
         "profile_id": profile_id,
         "doc_type": doc_type,
+        "run_config": _jsonable(run_config or {}),
         "structure": structure_to_dict(structure),
         "issues": _jsonable(tuple(issues)),
         "operations": _jsonable(tuple(operations)),

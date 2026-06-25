@@ -25,6 +25,7 @@ from official_docx_engine.models import FormatOperation
 from official_docx_engine.models import DocumentSnapshot, ParagraphSnapshot
 from official_docx_engine.imprint import format_existing_imprint
 from official_docx_engine.page_numbers import apply_page_numbers, inspect_footers
+from official_docx_engine.reporting import report_path_value
 from official_docx_engine.standard_text import build_standard_text_document, looks_like_standard_text
 from official_docx_engine.tables import append_and_format_source_tables, copy_and_format_table
 from official_docx_engine.toc import generate_toc_if_clear
@@ -86,22 +87,22 @@ UNNUMBERED_HEADING_SUFFIXES = (
     "说明",
 )
 SIGNATURE_HINT_RE = re.compile(r"(公司|集团|局|厅|部|委|办|处|科|院|中心|办公室|专班|小组|委员会)$")
-SPACED_SUBHEADING_SUFFIXES = ("规范", "异常", "图片", "方案", "问题", "措施")
-MANAGEMENT_METHOD_TITLE = "超储物资内部调剂消耗指引"
-MANAGEMENT_METHOD_CHAPTERS = (
-    ("管理职责分工", ("集团供应链管理部",)),
-    ("上架信息发布要求", ("超储物资上架信息", "上架信息须")),
-    ("需求匹配与优先调剂", ("需求单位在发起",)),
-    ("调剂定价规则", ("超储物资的调剂价格",)),
-    ("资产减值处理", ("资产减值是指", "资产减值，定义")),
-    ("资产评估机制", ("资产评估是", "资产评估，定义")),
-    ("重置完全价核定", ("重置完全价是指", "重置完全价，定义")),
-    ("费用承担", ("超储物资调剂产生", "费用主体：超储物资调剂")),
-    ("零值物资快速调拨", ("为提高资源流转效率",)),
-    ("线上操作流程", ("所有调剂业务必须", "线上化闭环")),
-    ("财务处理与税务合规", ("财务处理与税务合规方面", "调出方处理：")),
-    ("交付验收与质保", ("超储物资调剂适用", "现状交付机制")),
-    ("考核激励", ("考核激励层面", "考核激励机制")),
+SPACED_SUBHEADING_SUFFIXES = ("规范", "异常", "文本", "方案", "问题", "措施")
+PUBLIC_SERVICE_GUIDE_TITLE = "公共服务事项办理指引"
+PUBLIC_SERVICE_GUIDE_CHAPTERS = (
+    ("职责分工", ("办事指南编制部门",)),
+    ("办理材料清单", ("办理材料清单应列明",)),
+    ("申请前核对", ("申请人在提交申请前",)),
+    ("受理标准", ("受理标准主要依据",)),
+    ("补正告知", ("补正告知是指",)),
+    ("审查办理", ("审查办理是通过",)),
+    ("结果送达", ("结果送达是指",)),
+    ("高频事项快办", ("为提高办理效率",)),
+    ("全流程记录", ("所有办理过程应",)),
+    ("监督评价", ("监督评价方面",)),
+    ("资料归档", ("资料归档适用",)),
+    ("问题汇总", ("定期汇总咨询问题",)),
+    ("持续改进", ("持续优化办事指南",)),
 )
 
 
@@ -172,9 +173,9 @@ def split_glued_single_paragraph(lines: list[str]) -> list[str]:
     if len(non_empty) != 1:
         return lines
     text = non_empty[0]
-    management_blocks = _split_management_method(text)
-    if management_blocks is not None:
-        return management_blocks
+    public_service_blocks = _split_public_service_guide(text)
+    if public_service_blocks is not None:
+        return public_service_blocks
     if len(text) < 120 or SENTENCE_PUNCT_RE.search(text[:40]):
         return lines
 
@@ -191,13 +192,13 @@ def split_glued_single_paragraph(lines: list[str]) -> list[str]:
     return blocks if len(blocks) > 2 else lines
 
 
-def _split_management_method(text: str) -> list[str] | None:
+def _split_public_service_guide(text: str) -> list[str] | None:
     compact = text.strip()
-    if not compact.startswith(MANAGEMENT_METHOD_TITLE):
+    if not compact.startswith(PUBLIC_SERVICE_GUIDE_TITLE):
         return None
 
     chapter_points: list[tuple[int, str, str]] = []
-    for title, anchors in MANAGEMENT_METHOD_CHAPTERS:
+    for title, anchors in PUBLIC_SERVICE_GUIDE_CHAPTERS:
         match = _find_first_anchor(compact, anchors)
         if match is None:
             return None
@@ -205,11 +206,11 @@ def _split_management_method(text: str) -> list[str] | None:
         chapter_points.append((position, title, anchor))
     chapter_points.sort(key=lambda item: item[0])
 
-    if [title for _, title, _ in chapter_points] != [title for title, _ in MANAGEMENT_METHOD_CHAPTERS]:
+    if [title for _, title, _ in chapter_points] != [title for title, _ in PUBLIC_SERVICE_GUIDE_CHAPTERS]:
         return None
 
-    blocks = [MANAGEMENT_METHOD_TITLE]
-    lead = compact[len(MANAGEMENT_METHOD_TITLE) : chapter_points[0][0]].strip()
+    blocks = [PUBLIC_SERVICE_GUIDE_TITLE]
+    lead = compact[len(PUBLIC_SERVICE_GUIDE_TITLE) : chapter_points[0][0]].strip()
     if lead:
         blocks.extend(_split_sentence_blocks(lead))
 
@@ -728,7 +729,7 @@ def build_document_from_source(
     glued_repaired = repaired_paragraph_texts != paragraph_texts
     recovery_method = None
     if glued_repaired:
-        recovery_method = "management_method" if paragraph_texts[0].startswith(MANAGEMENT_METHOD_TITLE) else "glued_single_paragraph"
+        recovery_method = "public_service_guide" if paragraph_texts[0].startswith(PUBLIC_SERVICE_GUIDE_TITLE) else "glued_single_paragraph"
     paragraph_texts = repaired_paragraph_texts
     title_lines, detected_recipient, body_start, detected_issuer, detected_date = split_source_paragraphs(paragraph_texts)
     if generic_formal_text:
@@ -818,13 +819,16 @@ def write_text_file_report(
     glued_text_detected: bool,
     warnings: list[str],
     operations: list[dict[str, Any]],
+    include_local_paths: bool,
+    run_config: dict[str, Any],
 ) -> Path:
     payload = {
-        "input": str(input_path),
-        "output": str(output_path),
+        "input": report_path_value(input_path, include_local_paths=include_local_paths),
+        "output": report_path_value(output_path, include_local_paths=include_local_paths),
         "input_type": "text_file",
         "profile_id": profile_id,
         "doc_type": doc_type,
+        "run_config": run_config,
         "title": title,
         "raw_line_count": raw_line_count,
         "output_paragraph_count": output_paragraph_count,
@@ -841,6 +845,20 @@ def _report_path(output_path: Path, report_arg: Optional[str]) -> Optional[Path]
     if report_arg in {None, ""}:
         return output_path.with_suffix(".report.json")
     return Path(report_arg)
+
+
+def _text_normalization_value(normalize: bool, space_mode: str) -> str:
+    return space_mode if normalize else "off"
+
+
+def _run_config(profile_id: str, doc_type: str, normalize: bool, space_mode: str, include_local_paths: bool) -> dict[str, Any]:
+    return {
+        "profile_id": profile_id,
+        "doc_type": doc_type,
+        "text_normalization": _text_normalization_value(normalize, space_mode),
+        "space_mode": space_mode,
+        "include_local_paths": include_local_paths,
+    }
 
 
 def main() -> int:
@@ -869,6 +887,7 @@ def main() -> int:
     parser.add_argument("--generate-toc", action="store_true", help="Generate a Word TOC field when heading hierarchy is clear")
     parser.add_argument("--format-imprint", action="store_true", help="Detect and format existing imprint lines without creating new ones")
     parser.add_argument("--generic-formal-text", action="store_true", help="Format as 通用正式文本: preserve order and apply generic formal typography without official-document structure")
+    parser.add_argument("--include-local-paths", action="store_true", help="Write full local input/output paths in report JSON")
     parser.add_argument("--standard-text", action="store_true", help="Format 标准规范文本 documents with cover, toc, chapter, clause, and table rules")
     parser.add_argument("--standard-spec-text", action="store_true", help="Alias for --standard-text")
     parser.add_argument(
@@ -911,29 +930,28 @@ def main() -> int:
         body = lines[1:] if title and lines and title == lines[0] else lines
         doc = build_document(title, args.recipient, body, args.issuer, args.date_text, profile, normalize=normalize, space_mode=args.space_mode)
         warnings = [GLUED_TEXT_WARNING] if glued_text_detected else []
-        if args.report is not None:
-            text_file_report_data = {
-                "input_path": text_file_path,
-                "profile_id": profile.get("profile_id", args.profile),
-                "doc_type": args.doc_type or "未知",
-                "title": title,
-                "raw_line_count": len(lines),
-                "glued_text_detected": glued_text_detected,
-                "warnings": warnings,
-                "operations": [
-                    {
-                        "kind": "text_file_format",
-                        "target": "document",
-                        "params": {
-                            "raw_line_count": len(lines),
-                            "glued_text_detected": glued_text_detected,
-                            "structure_recovery": "not_attempted",
-                            "table_recovery": "not_attempted",
-                        },
-                        "reason": "format plain text as provided without automatic structure or table recovery",
-                    }
-                ],
-            }
+        text_file_report_data = {
+            "input_path": text_file_path,
+            "profile_id": profile.get("profile_id", args.profile),
+            "doc_type": args.doc_type or "未知",
+            "title": title,
+            "raw_line_count": len(lines),
+            "glued_text_detected": glued_text_detected,
+            "warnings": warnings,
+            "operations": [
+                {
+                    "kind": "text_file_format",
+                    "target": "document",
+                    "params": {
+                        "raw_line_count": len(lines),
+                        "glued_text_detected": glued_text_detected,
+                        "structure_recovery": "not_attempted",
+                        "table_recovery": "not_attempted",
+                    },
+                    "reason": "format plain text as provided without automatic structure or table recovery",
+                }
+            ],
+        }
     else:
         if not args.input:
             raise SystemExit("input .docx path is required unless --text-file is used")
@@ -949,6 +967,7 @@ def main() -> int:
                     "input_path": input_path,
                     "profile_id": profile.get("profile_id", args.profile),
                     "doc_type": STANDARD_SPEC_TEXT,
+                    "run_config": _run_config(profile.get("profile_id", args.profile), STANDARD_SPEC_TEXT, normalize, args.space_mode, args.include_local_paths),
                     "structure": structure,
                     "issues": diagnose_snapshot(snapshot, structure),
                     "operations": [
@@ -993,6 +1012,7 @@ def main() -> int:
                 profile_id=profile.get("profile_id", args.profile),
                 doc_type=args.doc_type or "未知",
                 normalize_text=normalize,
+                space_mode=args.space_mode,
             )
             doc, inline_table_count, chapter_recovery_method = build_document_from_source(
                 input_path,
@@ -1011,6 +1031,7 @@ def main() -> int:
                     "input_path": input_path,
                     "profile_id": profile.get("profile_id", args.profile),
                     "doc_type": args.doc_type or "未知",
+                    "run_config": _run_config(profile.get("profile_id", args.profile), args.doc_type or "未知", normalize, args.space_mode, args.include_local_paths),
                     "structure": structure,
                     "issues": issues,
                     "operations": list(plan.operations),
@@ -1124,6 +1145,8 @@ def main() -> int:
             structure=report_data["structure"],
             issues=report_data["issues"],
             operations=report_data["operations"],
+            include_local_paths=args.include_local_paths,
+            run_config=report_data["run_config"],
         )
         print(f"report={report_path}")
     if report_path is not None and text_file_report_data is not None:
@@ -1139,13 +1162,21 @@ def main() -> int:
             glued_text_detected=text_file_report_data["glued_text_detected"],
             warnings=text_file_report_data["warnings"],
             operations=text_file_report_data["operations"],
+            include_local_paths=args.include_local_paths,
+            run_config=_run_config(
+                text_file_report_data["profile_id"],
+                text_file_report_data["doc_type"],
+                normalize,
+                args.space_mode,
+                args.include_local_paths,
+            ),
         )
         print(f"report={report_path}")
     if text_file_glued_warning:
         print("warning=glued_plain_text_detected")
     print(f"saved={output_path}")
     print(f"profile={profile.get('profile_id', args.profile)}")
-    print(f"text_normalization={'off' if args.no_normalize_text else args.space_mode}")
+    print(f"text_normalization={_text_normalization_value(normalize, args.space_mode)}")
     print(smoke_check(output_path))
     return 0
 

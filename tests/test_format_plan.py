@@ -16,6 +16,7 @@ def test_build_format_plan_includes_core_operations() -> None:
         profile_id="standard-party-government",
         doc_type="通知",
         normalize_text=True,
+        space_mode="keep_en_boundary",
     )
 
     kinds = [operation.kind for operation in plan.operations]
@@ -41,8 +42,27 @@ def test_build_format_plan_respects_normalize_text_flag() -> None:
         profile_id="standard-party-government",
         doc_type="通知",
         normalize_text=False,
+        space_mode="keep_en_boundary",
     )
 
     assert plan.operations_of_kind("page_setup")
     assert plan.operations_of_kind("paragraph_style")
     assert not plan.operations_of_kind("text_normalization")
+
+
+def test_build_format_plan_uses_requested_space_mode() -> None:
+    snapshot = snapshot_from_lines(MULTILINE_NOTICE)
+    structure = analyze_structure(snapshot)
+
+    plan = build_format_plan(
+        snapshot,
+        structure,
+        profile_id="standard-party-government",
+        doc_type="通知",
+        normalize_text=True,
+        space_mode="remove_all",
+    )
+
+    text_ops = plan.operations_of_kind("text_normalization")
+    assert text_ops
+    assert {operation.params["space_mode"] for operation in text_ops} == {"remove_all"}

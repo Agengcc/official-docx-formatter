@@ -25,9 +25,9 @@ Do not modify legacy enterprise-specific skills unless the user explicitly asks.
 - Preserve visible Word automatic numbering. When Word stores visible prefixes such as `一、` in `numbering.xml` instead of paragraph text, materialize those prefixes before rebuilding the document so formatted output does not silently drop hierarchy markers.
 - For extreme glued drafts with only one long paragraph, an obvious official-document title, and embedded section-heading signals, conservatively split title, body paragraphs, section headings, and trailing signature-like lines before classification and formatting.
 - When the source has no explicit numbering but contains short standalone structure lines such as `存在的问题`、`解决措施` or `时间计划`, format those lines as hierarchy headings. Treat short title-continuation lines before the body as subtitles/title lines when signals are clear.
-- When one long paragraph uses spaces to separate structure blocks, preserve those boundaries before text normalization and recover nested hierarchy such as `一、存在的问题` and `（一）计量单位不符合商城商品规范` when the signals are explicit.
-- For one-paragraph management-method drafts such as `超储物资内部调剂消耗指引`, do not let the model manually summarize or invent bare headings. Use the deterministic script recovery rules to generate standard numbered chapters such as `一、管理职责分工` through `十三、考核激励`.
-- Keep one-paragraph management-method recovery backed by real DOCX regression fixtures such as `管理办法.docx`; do not rely only on synthetic examples when changing these anchors.
+- When one long paragraph uses spaces to separate structure blocks, preserve those boundaries before text normalization and recover nested hierarchy such as `一、存在的问题` and `（一）材料清单不符合事项公开规范` when the signals are explicit.
+- For one-paragraph guide drafts such as `公共服务事项办理指引`, do not let the model manually summarize or invent bare headings. Use deterministic script recovery rules to generate standard numbered chapters such as `一、职责分工` through `十三、持续改进`.
+- Keep one-paragraph guide recovery backed by neutral DOCX regression fixtures; do not rely only on synthetic examples when changing these anchors.
 - Do not infer or rebuild complex Word tables from plain glued text in this branch. Preserve and format real source tables when they exist, but leave pure-text table recovery for a separate, evidence-backed feature.
 - For `.txt` or other plain-text inputs with too few line breaks and long content, report `glued_plain_text_detected`; do not automatically recover chapters or convert pipe-delimited plain text into Word tables.
 - Protect URLs, email addresses, times, standards, and code-like identifiers during punctuation normalization.
@@ -104,8 +104,8 @@ Do not ask the user to choose between standard and custom formats. If the user a
    - If the source has collapsed all content into one long paragraph, repair paragraph boundaries only when the title and embedded section-heading signals are clear. Preserve wording and order; do not invent missing headings, issuer, or date.
    - If paragraph hierarchy is implicit, identify only short standalone, punctuation-free structure lines as headings/subtitles. Do not promote sentence-like body text or signature-like organization lines into headings.
    - For space-delimited one-paragraph drafts, split structure blocks before applying text normalization so boundary spaces are not lost. Add visible hierarchy numbering only to recovered heading lines, not to sentence-like body paragraphs.
-   - For management-method long paragraphs with known business anchors, use scripted chapter recovery. Do not save a model-handcrafted output with unnumbered headings such as `职责分工` or `信息发布`; the output must use standard numbered chapter headings.
-   - Keep these management-method recovery rules covered by real DOCX samples, especially single-paragraph `管理办法.docx`-style inputs, before changing anchors or chapter boundaries.
+   - For guide-style long paragraphs with known neutral anchors, use scripted chapter recovery. Do not save a model-handcrafted output with unnumbered headings such as `职责分工` or `监督评价`; the output must use standard numbered chapter headings.
+   - Keep these guide recovery rules covered by neutral real DOCX samples, especially single-paragraph guide-style inputs, before changing anchors or chapter boundaries.
    - Preserve real source tables when requested by the table-formatting path, but do not automatically convert plain glued text into complex Word tables in this branch.
    - For plain-text inputs with very few line breaks and long content, generate a report warning instead of pretending reliable structure recovery happened. The basic formatted `.docx` may still be produced, but it must be described as not having recovered chapters or plain-text tables.
    - Treat hierarchy paragraphs such as `一、`、`（一）`、`1.` and `（1）` as正文层级段落: keep their hierarchy fonts, but use the same two-character first-line indent as ordinary body paragraphs.
@@ -177,9 +177,9 @@ Standard-specification extras:
 | --- | --- |
 | Cover standard label | Merge detected split labels such as `中华人民共和国` + `电力企业团体标准配套稿` |
 | TOC chapter item `1  范围` | No indent, bold |
-| TOC clause item `3.1  闲置物资` | Indent one level, not bold |
+| TOC clause item `3.1  服务事项` | Indent one level, not bold |
 | Body chapter heading `1  范围` | Heiti, bold |
-| Body clause heading `3.1  闲置物资` | Heiti, not bold |
+| Body clause heading `3.1  服务事项` | Heiti, not bold |
 | Table first column `序号`/`编号` | Use a narrow first column and evenly distribute remaining content columns |
 
 Only apply heading fonts to short standalone heading paragraphs. If a paragraph mixes a numbered prefix with sentence content, format the whole paragraph as body text.
